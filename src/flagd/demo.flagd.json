@@ -8,7 +8,7 @@
         "on": true,
         "off": false
       },
-      "defaultVariant": "off"
+      "defaultVariant": "on"
     },
     "recommendationServiceCacheFailure": {
       "description": "Fail recommendation service cache",
@@ -17,7 +17,7 @@
         "on": true,
         "off": false
       },
-      "defaultVariant": "off"
+      "defaultVariant": "on"
     },
     "adServiceManualGc": {
       "description": "Triggers full manual garbage collections in the ad service",
@@ -26,7 +26,7 @@
         "on": true,
         "off": false
       },
-      "defaultVariant": "off"
+      "defaultVariant": "on"
     },
     "adServiceHighCpu": {
       "description": "Triggers high cpu load in the ad service",
@@ -35,7 +35,7 @@
         "on": true,
         "off": false
       },
-      "defaultVariant": "off"
+      "defaultVariant": "on"
     },
     "adServiceFailure": {
       "description": "Fail ad service",
@@ -44,7 +44,7 @@
         "on": true,
         "off": false
       },
-      "defaultVariant": "off"
+      "defaultVariant": "on"
     },
     "kafkaQueueProblems": {
       "description": "Overloads Kafka queue while simultaneously introducing a consumer side delay leading to a lag spike",
@@ -53,7 +53,7 @@
         "on": 100,
         "off": 0
       },
-      "defaultVariant": "off"
+      "defaultVariant": "on"
     },
     "cartServiceFailure": {
       "description": "Fail cart service",
@@ -62,7 +62,7 @@
         "on": true,
         "off": false
       },
-      "defaultVariant": "off"
+      "defaultVariant": "on"
     },
     "paymentServiceFailure": {
       "description": "Fail payment service charge requests",
@@ -71,7 +71,7 @@
         "on": true,
         "off": false
       },
-      "defaultVariant": "off"
+      "defaultVariant": "on"
     },
     "paymentServiceUnreachable": {
       "description": "Payment service is unavailable",
@@ -80,7 +80,7 @@
         "on": true,
         "off": false
       },
-      "defaultVariant": "off"
+      "defaultVariant": "on"
     },
     "loadgeneratorFloodHomepage": {
       "description": "Flood the frontend with a large amount of requests.",
@@ -89,7 +89,7 @@
         "on": 100,
         "off": 0
       },
-      "defaultVariant": "off"
+      "defaultVariant": "on"
     },
     "imageSlowLoad": {
       "description": "slow loading images in the frontend",
