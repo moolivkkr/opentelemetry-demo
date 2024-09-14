@@ -6,7 +6,11 @@ x-default-logging: &logging
   options:
     max-size: "5m"
     max-file: "2"
-    tag: "{{.Name}}"
+
+volumes:
+  opensearch-data1:
+  opensearch-data2:
+  prometheus_data:
 
 networks:
   default:
@@ -19,7 +23,7 @@ services:
   # ******************
   # Accounting service
   accountingservice:
-    image: ${IMAGE_NAME}:${DEMO_VERSION}-accountingservice
+    image: ${IMAGE_NAME}/accountingservice:${DEMO_VERSION}
     container_name: accounting-service
     build:
       context: ./
@@ -46,7 +50,7 @@ services:
 
   # AdService
   adservice:
-    image: ${IMAGE_NAME}:${DEMO_VERSION}-adservice
+    image: ${IMAGE_NAME}/adservice:${DEMO_VERSION}
     container_name: ad-service
     build:
       context: ./
@@ -78,7 +82,7 @@ services:
 
   # Cart service
   cartservice:
-    image: ${IMAGE_NAME}:${DEMO_VERSION}-cartservice
+    image: ${IMAGE_NAME}/cartservice:${DEMO_VERSION}
     container_name: cart-service
     build:
       context: ./
@@ -112,7 +116,7 @@ services:
 
   # Checkout service
   checkoutservice:
-    image: ${IMAGE_NAME}:${DEMO_VERSION}-checkoutservice
+    image: ${IMAGE_NAME}/checkoutservice:${DEMO_VERSION}
     container_name: checkout-service
     build:
       context: ./
@@ -164,7 +168,7 @@ services:
 
   # Currency service
   currencyservice:
-    image: ${IMAGE_NAME}:${DEMO_VERSION}-currencyservice
+    image: ${IMAGE_NAME}/currencyservice:${DEMO_VERSION}
     container_name: currency-service
     build:
       context: ./
@@ -190,7 +194,7 @@ services:
 
   # Email service
   emailservice:
-    image: ${IMAGE_NAME}:${DEMO_VERSION}-emailservice
+    image: ${IMAGE_NAME}/emailservice:${DEMO_VERSION}
     container_name: email-service
     build:
       context: ./
@@ -217,7 +221,7 @@ services:
 
   # Fraud Detection service
   frauddetectionservice:
-    image: ${IMAGE_NAME}:${DEMO_VERSION}-frauddetectionservice
+    image: ${IMAGE_NAME}/frauddetectionservice:${DEMO_VERSION}
     container_name: frauddetection-service
     build:
       context: ./
@@ -248,7 +252,7 @@ services:
 
   # Frontend
   frontend:
-    image: ${IMAGE_NAME}:${DEMO_VERSION}-frontend
+    image: ${IMAGE_NAME}/frontend:${DEMO_VERSION}
     container_name: frontend
     build:
       context: ./
@@ -309,7 +313,7 @@ services:
 
   # Frontend Proxy (Envoy)
   frontendproxy:
-    image: ${IMAGE_NAME}:${DEMO_VERSION}-frontendproxy
+    image: ${IMAGE_NAME}/frontendproxy:${DEMO_VERSION}
     container_name: frontend-proxy
     build:
       context: ./
@@ -352,7 +356,7 @@ services:
 
   # Imageprovider
   imageprovider:
-    image: ${IMAGE_NAME}:${DEMO_VERSION}-imageprovider
+    image: ${IMAGE_NAME}/imageprovider:${DEMO_VERSION}
     container_name: imageprovider
     build:
       context: ./
@@ -379,7 +383,7 @@ services:
 
   # Load Generator
   loadgenerator:
-    image: ${IMAGE_NAME}:${DEMO_VERSION}-loadgenerator
+    image: ${IMAGE_NAME}/loadgenerator:${DEMO_VERSION}
     container_name: load-generator
     build:
       context: ./
@@ -417,7 +421,7 @@ services:
 
   # Payment service
   paymentservice:
-    image: ${IMAGE_NAME}:${DEMO_VERSION}-paymentservice
+    image: ${IMAGE_NAME}/paymentservice:${DEMO_VERSION}
     container_name: payment-service
     build:
       context: ./
@@ -448,7 +452,7 @@ services:
 
   # Product Catalog service
   productcatalogservice:
-    image: ${IMAGE_NAME}:${DEMO_VERSION}-productcatalogservice
+    image: ${IMAGE_NAME}/productcatalogservice:${DEMO_VERSION}
     container_name: product-catalog-service
     build:
       context: ./
@@ -479,7 +483,7 @@ services:
 
   # Quote service
   quoteservice:
-    image: ${IMAGE_NAME}:${DEMO_VERSION}-quoteservice
+    image: ${IMAGE_NAME}/quoteservice:${DEMO_VERSION}
     container_name: quote-service
     build:
       context: ./
@@ -507,7 +511,7 @@ services:
 
   # Recommendation service
   recommendationservice:
-    image: ${IMAGE_NAME}:${DEMO_VERSION}-recommendationservice
+    image: ${IMAGE_NAME}/recommendationservice:${DEMO_VERSION}
     container_name: recommendation-service
     build:
       context: ./
@@ -543,7 +547,7 @@ services:
 
   # Shipping service
   shippingservice:
-    image: ${IMAGE_NAME}:${DEMO_VERSION}-shippingservice
+    image: ${IMAGE_NAME}/shippingservice:${DEMO_VERSION}
     container_name: shipping-service
     build:
       context: ./
@@ -599,7 +603,7 @@ services:
 
   # Kafka used by Checkout, Accounting, and Fraud Detection services
   kafka:
-    image: ${IMAGE_NAME}:${DEMO_VERSION}-kafka
+    image: ${IMAGE_NAME}/kafka:${DEMO_VERSION}
     container_name: kafka
     build:
       context: ./
@@ -738,23 +742,73 @@ services:
       - "${PROMETHEUS_SERVICE_PORT}:${PROMETHEUS_SERVICE_PORT}"
     logging: *logging
 
-  # OpenSearch
-  opensearch:
+  # # OpenSearch
+  # opensearch:
+  #   image: ${OPENSEARCH_IMAGE}
+  #   container_name: opensearch
+  #   deploy:
+  #     resources:
+  #       limits:
+  #         memory: 1G
+  #   restart: unless-stopped
+  #   environment:
+  #     - cluster.name=demo-cluster
+  #     - node.name=demo-node
+  #     - bootstrap.memory_lock=true
+  #     - discovery.type=single-node
+  #     - OPENSEARCH_JAVA_OPTS=-Xms300m -Xmx300m
+  #     - DISABLE_INSTALL_DEMO_CONFIG=true
+  #     - DISABLE_SECURITY_PLUGIN=true
+  #   ulimits:
+  #     memlock:
+  #       soft: -1
+  #       hard: -1
+  #     nofile:
+  #       soft: 65536
+  #       hard: 65536
+  #   ports:
+  #     - "9200"
+  #   logging: *logging
+
+
+  opensearch-node1:
     image: ${OPENSEARCH_IMAGE}
-    container_name: opensearch
-    deploy:
-      resources:
-        limits:
-          memory: 1G
-    restart: unless-stopped
+    container_name: opensearch-node1
     environment:
       - cluster.name=demo-cluster
-      - node.name=demo-node
+      - node.name=opensearch-node1
+      - discovery.seed_hosts=opensearch-node1,opensearch-node2
+      - cluster.initial_cluster_manager_nodes=opensearch-node1,opensearch-node2
+      - plugins.query.datasources.encryption.masterkey=8e3f206ea7c07cc1bfc5cf40
+      - bootstrap.memory_lock=true # along with the memlock settings below, disables swapping
+      - "OPENSEARCH_JAVA_OPTS=-Xms2g -Xmx2g" # minimum and maximum Java heap size, recommend setting both to 50% of system RAM
+      - "OPENSEARCH_INITIAL_ADMIN_PASSWORD=${OPENSEARCH_ADMIN_PASSWORD}"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536 # maximum number of open files for the OpenSearch user, set to at least 65536 on modern systems
+        hard: 65536
+    volumes:
+      - opensearch-data1:/usr/share/opensearch/data/${OPENSEARCH_VERSION}
+    ports:
+      - 9200:9200
+      - 9600:9600 # required for Performance Analyzer
+
+
+  opensearch-node2:
+    image: ${OPENSEARCH_IMAGE}
+    container_name: opensearch-node2
+    environment:
+      - cluster.name=demo-cluster
+      - node.name=opensearch-node2
+      - discovery.seed_hosts=opensearch-node1,opensearch-node2
+      - cluster.initial_cluster_manager_nodes=opensearch-node1,opensearch-node2
       - bootstrap.memory_lock=true
-      - discovery.type=single-node
-      - OPENSEARCH_JAVA_OPTS=-Xms300m -Xmx300m
-      - DISABLE_INSTALL_DEMO_CONFIG=true
-      - DISABLE_SECURITY_PLUGIN=true
+      - plugins.query.datasources.encryption.masterkey=8e3f206ea7c07cc1bfc5cf40
+      - "OPENSEARCH_JAVA_OPTS=-Xms2g -Xmx2g"
+      - "OPENSEARCH_INITIAL_ADMIN_PASSWORD=${OPENSEARCH_ADMIN_PASSWORD}"
     ulimits:
       memlock:
         soft: -1
@@ -762,6 +816,45 @@ services:
       nofile:
         soft: 65536
         hard: 65536
+    volumes:
+      - opensearch-data2:/usr/share/opensearch/data/${OPENSEARCH_VERSION}
+
+
+  opensearch-dashboards:
+    image: opensearchproject/opensearch-dashboards:${OPENSEARCH_VERSION}
+    container_name: opensearch-dashboards
     ports:
-      - "9200"
+      - 5601:5601
+    expose:
+      - "5601"
+    environment:
+      - 'OPENSEARCH_HOSTS=["https://opensearch-node1:9200","https://opensearch-node2:9200"]'
+    depends_on:
+      - opensearch-node1
+      - opensearch-node2
+    volumes:
+      - ./src/dashboards/config/opensearch_dashboards.yml:/usr/share/opensearch-dashboards/config/opensearch_dashboards.yml
+
+  # OpenSearch store - dashboard
+  data-prepper:
+    platform: linux/amd64
+    image: ${DRAPPER_IMAGE}
+    container_name: dataprepper
+    volumes:
+      - /data/service-map/
+      - ./src/dataprepper/templates/ss4o_metrics.json:/usr/share/data-prepper/templates/ss4o_metrics.json
+      - ./src/dataprepper/templates/ss4o_logs.json:/usr/share/data-prepper/templates/ss4o_logs.json
+      - ./src/dataprepper/templates/ss4o_traces.json:/usr/share/data-prepper/templates/ss4o_traces.json
+      - ./src/dataprepper/pipelines.yaml:/usr/share/data-prepper/pipelines/pipelines.yaml
+      - ./src/dataprepper/data-prepper-config.yaml:/usr/share/data-prepper/config/data-prepper-config.yaml
+    ports:
+      - "21890:21890"
+      - "21891:21891"
+      - "21892:21892"
+    expose:
+      - "21890"
+      - "21891"
+      - "21892"
     logging: *logging
+    depends_on:
+      - opensearch-dashboards

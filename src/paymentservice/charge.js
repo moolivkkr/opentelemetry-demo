@@ -7,8 +7,27 @@ const { v4: uuidv4 } = require('uuid');
 const { OpenFeature } = require('@openfeature/server-sdk');
 const { FlagdProvider} = require('@openfeature/flagd-provider');
 const flagProvider = new FlagdProvider();
+const winston = require('winston');
+const { OpenTelemetryTransportV3 } = require('@opentelemetry/winston-transport');
+//const logger = require('./logger');
 
-const logger = require('./logger');
+const logger = winston.createLogger({
+  level: 'info',  
+  format: winston.format.combine(
+    winston.format.timestamp(),
+    winston.format.printf(({ timestamp, level, message, ...meta }) => {
+    const span = trace.getSpan(context.active());
+    const traceId = span ? span.spanContext().traceId : 'N/A';
+    const spanId = span ? span.spanContext().spanId : 'N/A';
+    return `${timestamp} [${level}] trace_id=${traceId} service.name="paymentservice" span_id=${spanId} body=${JSON.stringify(message)}`;
+
+  })
+),
+  transports: [
+    new winston.transports.Console(),
+    new OpenTelemetryTransportV3()
+  ]
+});
 const tracer = trace.getTracer('paymentservice');
 const meter = metrics.getMeter('paymentservice');
 const transactionsCounter = meter.createCounter('app.payment.transactions')
@@ -18,6 +37,7 @@ module.exports.charge = async request => {
 
   await OpenFeature.setProviderAndWait(flagProvider);
   if (await OpenFeature.getClient().getBooleanValue("paymentServiceFailure", false)) {
+    logger.error("PaymentService Fail Feature Flag Enabled")
     throw new Error("PaymentService Fail Feature Flag Enabled");
   }
 
@@ -40,10 +60,12 @@ module.exports.charge = async request => {
   });
 
   if (!valid) {
+    logger.error('Credit card info is invalid.')
     throw new Error('Credit card info is invalid.');
   }
 
   if (!['visa', 'mastercard'].includes(cardType)) {
+    logging.error(`Sorry, we cannot process ${cardType} credit cards. Only VISA or MasterCard is accepted.`);
     throw new Error(`Sorry, we cannot process ${cardType} credit cards. Only VISA or MasterCard is accepted.`);
   }
 

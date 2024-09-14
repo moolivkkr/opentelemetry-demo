@@ -5,8 +5,27 @@ const protoLoader = require('@grpc/proto-loader')
 const health = require('grpc-js-health-check')
 const opentelemetry = require('@opentelemetry/api')
 
+const { context, trace } = require('@opentelemetry/api');
+const winston = require('winston');
+
+const { OpenTelemetryTransportV3 } = require('@opentelemetry/winston-transport');
 const charge = require('./charge')
-const logger = require('./logger')
+const logger = winston.createLogger({
+  level: 'info',  
+  format: winston.format.combine(
+    winston.format.timestamp(),
+    winston.format.printf(({ timestamp, level, message, ...meta }) => {
+    const span = trace.getSpan(context.active());
+    const traceId = span ? span.spanContext().traceId : 'N/A';
+    const spanId = span ? span.spanContext().spanId : 'N/A';
+    return `${timestamp} [${level}] trace_id=${traceId} service.name="paymentservice" span_id=${spanId} body=${JSON.stringify(message)}`;
+  })
+),
+  transports: [
+    new winston.transports.Console(),
+    new OpenTelemetryTransportV3()
+  ]
+});
 
 async function chargeServiceHandler(call, callback) {
   const span = opentelemetry.trace.getActiveSpan();
