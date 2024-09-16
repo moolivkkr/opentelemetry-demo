@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"go.opentelemetry.io/otel/attribute"
 	"net"
 	"net/http"
 	"os"
@@ -14,7 +15,6 @@ import (
 	"sync"
 	"time"
 
-	"go.opentelemetry.io/otel/attribute"
 	semconv "go.opentelemetry.io/otel/semconv/v1.24.0"
 	"go.opentelemetry.io/otel/trace"
 
@@ -32,6 +32,7 @@ import (
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/sdk/metric"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	sdkresource "go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
@@ -68,6 +69,66 @@ func init() {
 		TimestampFormat: time.RFC3339Nano,
 	}
 	log.Out = os.Stdout
+
+	// Initialize OpenTelemetry
+	ctx := context.Background()
+	res, err := sdkresource.New(ctx,
+		sdkresource.WithAttributes(
+			semconv.ServiceName("checkoutservice"),
+			semconv.ServiceVersion("1.0.0"),
+		),
+	)
+	if err != nil {
+		log.Fatalf("Failed to create resource: %v", err)
+	}
+
+	// Create OTLP exporter
+	exporter, err := otlpmetricgrpc.New(ctx,
+		otlpmetricgrpc.WithEndpoint("localhost:4317"), // Replace with your OTEL collector address
+		otlpmetricgrpc.WithInsecure(),
+	)
+	if err != nil {
+		log.Fatalf("Failed to create exporter: %v", err)
+	}
+
+	// Create MeterProvider
+	meterProvider := metric.NewMeterProvider(
+		metric.WithResource(res),
+		metric.WithReader(metric.NewPeriodicReader(exporter, metric.WithInterval(time.Second))),
+	)
+	otel.SetMeterProvider(meterProvider)
+
+	// Create a logrus hook for OpenTelemetry
+	hook := &otelHook{
+		meterProvider: meterProvider,
+	}
+	log.AddHook(hook)
+
+	// Ensure all logs are exported before exiting
+	if err := meterProvider.Shutdown(ctx); err != nil {
+		log.Fatalf("Failed to shutdown MeterProvider: %v", err)
+	}
+
+}
+
+type otelHook struct {
+	meterProvider *metric.MeterProvider
+}
+
+func (h *otelHook) Levels() []logrus.Level {
+	return logrus.AllLevels
+}
+
+func (h *otelHook) Fire(entry *logrus.Entry) error {
+	ctx := context.Background()
+	meter := h.meterProvider.Meter("logrus")
+	counter, _ := meter.Int64Counter("checkout_go_log_count")
+	counter.Add(ctx, 1,
+		attribute.Key.String("service.name", "my-service"),
+		attribute.Key.String("service.version", "1.0.0"),
+		attribute.Key.String("log.level", entry.Level.String()),
+	)
+	return nil
 }
 
 func initResource() *sdkresource.Resource {
