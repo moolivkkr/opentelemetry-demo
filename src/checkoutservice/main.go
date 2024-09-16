@@ -123,11 +123,7 @@ func (h *otelHook) Fire(entry *logrus.Entry) error {
 	ctx := context.Background()
 	meter := h.meterProvider.Meter("logrus")
 	counter, _ := meter.Int64Counter("checkout_go_log_count")
-	counter.Add(ctx, 1,
-		attribute.Key.String("service.name", "my-service"),
-		attribute.Key.String("service.version", "1.0.0"),
-		attribute.Key.String("log.level", entry.Level.String()),
-	)
+	counter.Add(ctx, 1)
 	return nil
 }
 
