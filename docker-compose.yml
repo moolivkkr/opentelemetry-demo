@@ -63,7 +63,7 @@ services:
           memory: 300M
     restart: unless-stopped
     ports:
-      - "${AD_SERVICE_PORT}"
+      - "${AD_SERVICE_PORT}:${AD_SERVICE_PORT}"
     environment:
       - AD_SERVICE_PORT
       - FLAGD_HOST
@@ -95,7 +95,7 @@ services:
           memory: 160M
     restart: unless-stopped
     ports:
-      - "${CART_SERVICE_PORT}"
+      - "${CART_SERVICE_PORT}:${CART_SERVICE_PORT}"
     environment:
       - CART_SERVICE_PORT
       - FLAGD_HOST
@@ -129,7 +129,7 @@ services:
           memory: 20M
     restart: unless-stopped
     ports:
-      - "${CHECKOUT_SERVICE_PORT}"
+      - "${CHECKOUT_SERVICE_PORT}:${CHECKOUT_SERVICE_PORT}"
     environment:
       - FLAGD_HOST
       - FLAGD_PORT
@@ -181,7 +181,7 @@ services:
           memory: 20M
     restart: unless-stopped
     ports:
-      - "${CURRENCY_SERVICE_PORT}"
+      - "${CURRENCY_SERVICE_PORT}:${CURRENCY_SERVICE_PORT}"
     environment:
       - CURRENCY_SERVICE_PORT
       - VERSION=${IMAGE_VERSION}
@@ -207,7 +207,7 @@ services:
           memory: 100M
     restart: unless-stopped
     ports:
-      - "${EMAIL_SERVICE_PORT}"
+      - "${EMAIL_SERVICE_PORT}:${EMAIL_SERVICE_PORT}"
     environment:
       - APP_ENV=production
       - EMAIL_SERVICE_PORT
@@ -232,7 +232,7 @@ services:
       resources:
         limits:
           memory: 300M
-    restart: unless-stopped
+    restart: unless-stopped  
     environment:
       - FLAGD_HOST
       - FLAGD_PORT
@@ -324,7 +324,7 @@ services:
           memory: 50M
     restart: unless-stopped
     ports:
-      - "${ENVOY_PORT}:${ENVOY_PORT}"
+      - "${ENVOY_PORT}"
       - 10000:10000
     environment:
       - FRONTEND_PORT
@@ -353,6 +353,8 @@ services:
         condition: service_started
       grafana:
         condition: service_started
+      otelcol:
+        condition: service_started
 
   # Imageprovider
   imageprovider:
@@ -369,7 +371,7 @@ services:
           memory: 120M
     restart: unless-stopped
     ports:
-      - "${IMAGE_PROVIDER_PORT}"
+      - "${IMAGE_PROVIDER_PORT}:${IMAGE_PROVIDER_PORT}"
     environment:
       - IMAGE_PROVIDER_PORT
       - OTEL_COLLECTOR_HOST
@@ -396,7 +398,7 @@ services:
           memory: 1G
     restart: unless-stopped
     ports:
-      - "${LOCUST_WEB_PORT}"
+      - "${LOCUST_WEB_PORT}:${LOCUST_WEB_PORT}"
     environment:
       - LOCUST_WEB_PORT
       - LOCUST_USERS
@@ -434,7 +436,7 @@ services:
           memory: 120M
     restart: unless-stopped
     ports:
-      - "${PAYMENT_SERVICE_PORT}"
+      - "${PAYMENT_SERVICE_PORT}:${PAYMENT_SERVICE_PORT}"
     environment:
       - PAYMENT_SERVICE_PORT
       - FLAGD_HOST
@@ -465,7 +467,7 @@ services:
           memory: 20M
     restart: unless-stopped
     ports:
-      - "${PRODUCT_CATALOG_SERVICE_PORT}"
+      - "${PRODUCT_CATALOG_SERVICE_PORT}:${PRODUCT_CATALOG_SERVICE_PORT}"
     environment:
       - PRODUCT_CATALOG_SERVICE_PORT
       - FLAGD_HOST
@@ -496,7 +498,7 @@ services:
           memory: 40M
     restart: unless-stopped
     ports:
-      - "${QUOTE_SERVICE_PORT}"
+      - "${QUOTE_SERVICE_PORT}:${QUOTE_SERVICE_PORT}"
     environment:
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://${OTEL_COLLECTOR_HOST}:${OTEL_COLLECTOR_PORT_HTTP}
       - OTEL_PHP_AUTOLOAD_ENABLED=true
@@ -524,7 +526,7 @@ services:
           memory: 500M               # This is high to enable supporting the recommendationCache feature flag use case
     restart: unless-stopped
     ports:
-      - "${RECOMMENDATION_SERVICE_PORT}"
+      - "${RECOMMENDATION_SERVICE_PORT}:${RECOMMENDATION_SERVICE_PORT}"
     environment:
       - RECOMMENDATION_SERVICE_PORT
       - PRODUCT_CATALOG_SERVICE_ADDR
@@ -560,7 +562,7 @@ services:
           memory: 20M
     restart: unless-stopped
     ports:
-      - "${SHIPPING_SERVICE_PORT}"
+      - "${SHIPPING_SERVICE_PORT}:${SHIPPING_SERVICE_PORT}"
     environment:
       - SHIPPING_SERVICE_PORT
       - QUOTE_SERVICE_ADDR
@@ -569,7 +571,7 @@ services:
       - OTEL_SERVICE_NAME=shippingservice
     depends_on:
       otelcol:
-        condition: service_started
+        condition: service_started        
     logging: *logging
 
   # ******************
@@ -595,7 +597,7 @@ services:
       "file:./etc/flagd/demo.flagd.json"
     ]
     ports:
-      - 8013
+      - 8013:8013
     volumes:
       - ./src/flagd:/etc/flagd
     logging:
@@ -621,7 +623,7 @@ services:
       - OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE
       - OTEL_RESOURCE_ATTRIBUTES
       - OTEL_SERVICE_NAME=kafka
-      - KAFKA_HEAP_OPTS=-Xmx400m -Xms400m
+      - KAFKA_HEAP_OPTS=-Xmx1g -Xms1g
     healthcheck:
       test: nc -z kafka 9092
       start_period: 10s
@@ -642,6 +644,10 @@ services:
     restart: unless-stopped
     ports:
       - "${VALKEY_PORT}"
+    depends_on:
+      - otelcol
+      - kafka
+      - flagd
     logging: *logging
 
 
@@ -664,7 +670,7 @@ services:
           memory: 400M
     restart: unless-stopped
     ports:
-      - "${JAEGER_SERVICE_PORT}"         # Jaeger UI
+      - "${JAEGER_SERVICE_PORT}:${JAEGER_SERVICE_PORT}"         # Jaeger UI
       - "${OTEL_COLLECTOR_PORT_GRPC}"
     environment:
       - METRICS_STORAGE_TYPE=prometheus
@@ -685,7 +691,7 @@ services:
       - ./src/grafana/grafana.ini:/etc/grafana/grafana.ini
       - ./src/grafana/provisioning/:/etc/grafana/provisioning/
     ports:
-      - "${GRAFANA_SERVICE_PORT}"
+      - "${GRAFANA_SERVICE_PORT}:${GRAFANA_SERVICE_PORT}"
     logging: *logging
 
   # OpenTelemetry Collector
@@ -709,6 +715,12 @@ services:
       - "${OTEL_COLLECTOR_PORT_HTTP}"
     depends_on:
       - jaeger
+      - prometheus
+      - opensearch-node1
+      - opensearch-node2
+      - opensearch-dashboards
+      - kafka
+      - grafana
     logging: *logging
     environment:
       - ENVOY_PORT
@@ -818,6 +830,9 @@ services:
         hard: 65536
     volumes:
       - opensearch-data2:/usr/share/opensearch/data/${OPENSEARCH_VERSION}
+    ports:
+      - 9200
+      - 9600 # required for Performance Analyzer
 
 
   opensearch-dashboards:

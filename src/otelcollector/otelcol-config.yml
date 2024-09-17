@@ -207,7 +207,7 @@ service:
     metrics:
       receivers: [hostmetrics, docker_stats, httpcheck/frontendproxy, otlp, prometheus, redis, spanmetrics]
       processors: [filter/ottl, transform/metrics, batch]
-      exporters: [ otlp/metrics, debug]
+      exporters: [ otlp/metrics,debug]
     logs:
       receivers: [otlp]
       processors: [batch]

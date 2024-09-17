@@ -47,6 +47,7 @@ const sdk = new opentelemetry.NodeSDK({
       logHook: (span, record) => {
         const spanContext = span.spanContext();
         record['service.name'] = otel_service_name;
+        record['serviceName'] = otel_service_name;
         record['trace_id'] = spanContext.traceId;
         record['span_id'] = spanContext.spanId;
         record['trace_flags'] = spanContext.traceFlags;        
