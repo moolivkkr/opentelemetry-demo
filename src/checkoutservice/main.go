@@ -7,7 +7,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/uptrace/opentelemetry-go-extra/otellogrus"
+	"go.opentelemetry.io/contrib/bridges/otellogrus"
+
+	//"github.com/uptrace/opentelemetry-go-extra/otellogrus"
 	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc"
 	"go.opentelemetry.io/otel/log/global"
 	"go.opentelemetry.io/otel/trace"
@@ -61,7 +63,7 @@ var initResourcesOnce sync.Once
 
 func init() {
 	log = logrus.New()
-	log.Level = logrus.DebugLevel
+	log.Level = logrus.InfoLevel
 	log.Formatter = &logrus.JSONFormatter{
 		FieldMap: logrus.FieldMap{
 			logrus.FieldKeyTime:  "timestamp",
@@ -71,16 +73,6 @@ func init() {
 		TimestampFormat: time.RFC3339Nano,
 	}
 	log.Out = os.Stdout
-
-	// Add OpenTelemetry hook
-	otelHook := otellogrus.NewHook(otellogrus.WithLevels(
-		logrus.PanicLevel,
-		logrus.FatalLevel,
-		logrus.ErrorLevel,
-		logrus.WarnLevel,
-		logrus.InfoLevel,
-	))
-	log.AddHook(otelHook)
 }
 
 func initResource() *sdkresource.Resource {
@@ -136,17 +128,15 @@ func newLoggerProvider(ctx context.Context, res *sdkresource.Resource) (*sdklog.
 	// Create the OTLP gRPC exporter
 	exporter, err := otlploggrpc.New(ctx,
 		otlploggrpc.WithInsecure(),
-		otlploggrpc.WithEndpoint("localhost:4317"), // Default gRPC endpoint
+		otlploggrpc.WithEndpoint("otelcol:4317"), // Default gRPC endpoint
 		otlploggrpc.WithDialOption(grpc.WithTransportCredentials(insecure.NewCredentials())),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create OTLP gRPC log exporter: %v", err)
 	}
 
-	batcher := sdklog.NewBatchProcessor(exporter,
-		sdklog.WithExportTimeout(5*time.Second),
-		sdklog.WithExportMaxBatchSize(10),
-	)
+	batcher := sdklog.NewBatchProcessor(exporter) //sdklog.WithExportTimeout(5*time.Second),
+	//sdklog.WithExportMaxBatchSize(10),
 
 	loggerProvider := sdklog.NewLoggerProvider(
 		sdklog.WithResource(res),
@@ -197,9 +187,6 @@ func main() {
 		return
 	}
 
-	// Set the global LoggerProvider
-	global.SetLoggerProvider(loggerProvider)
-
 	// Ensure all logs are flushed before the program exits
 	defer func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -208,6 +195,20 @@ func main() {
 			fmt.Printf("failed to shutdown LoggerProvider: %v\n", err)
 		}
 	}()
+
+	// Set the global LoggerProvider
+	global.SetLoggerProvider(loggerProvider)
+
+	// Create an *otellogrus.Hook and use it in your application.
+	hook := otellogrus.NewHook(
+		"log",
+		otellogrus.WithLoggerProvider(loggerProvider),
+		otellogrus.WithLevels(logrus.AllLevels),
+	)
+	// Set the newly created hook as a global logrus hook
+	log.AddHook(hook)
+
+	log.Infof("Initiated otel log exporting with logrus")
 
 	tp := initTracerProvider()
 	defer func() {
@@ -307,6 +308,14 @@ func (cs *checkoutService) Watch(req *healthpb.HealthCheckRequest, ws healthpb.H
 	return status.Errorf(codes.Unimplemented, "health check via Watch not implemented")
 }
 
+func getTraceContext(ctx context.Context) logrus.Fields {
+	span := trace.SpanFromContext(ctx)
+	return logrus.Fields{
+		"_traceId": span.SpanContext().TraceID().String(),
+		"_spanId":  span.SpanContext().SpanID().String(),
+	}
+}
+
 func (cs *checkoutService) PlaceOrder(ctx context.Context, req *pb.PlaceOrderRequest) (*pb.PlaceOrderResponse, error) {
 	span := trace.SpanFromContext(ctx)
 	span.SetAttributes(
@@ -314,12 +323,7 @@ func (cs *checkoutService) PlaceOrder(ctx context.Context, req *pb.PlaceOrderReq
 		attribute.String("app.user.currency", req.UserCurrency),
 	)
 
-	log.WithFields(logrus.Fields{
-		"traceID": span.SpanContext().TraceID().String(),
-		"spanID":  span.SpanContext().SpanID().String(),
-	}).Info("place order")
-
-	log.Infof("[PlaceOrder] user_id=%q user_currency=%q", req.UserId, req.UserCurrency)
+	log.WithFields(getTraceContext(ctx)).Infof("[PlaceOrder] user_id=%q user_currency=%q", req.UserId, req.UserCurrency)
 
 	var err error
 	defer func() {
@@ -352,7 +356,7 @@ func (cs *checkoutService) PlaceOrder(ctx context.Context, req *pb.PlaceOrderReq
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to charge card: %+v", err)
 	}
-	log.Infof("payment went through (transaction_id: %s)", txID)
+	log.WithFields(getTraceContext(ctx)).Infof("payment went through (transaction_id: %s)", txID)
 	span.AddEvent("charged",
 		trace.WithAttributes(attribute.String("app.payment.transaction.id", txID)))
 
@@ -385,14 +389,14 @@ func (cs *checkoutService) PlaceOrder(ctx context.Context, req *pb.PlaceOrderReq
 	)
 
 	if err := cs.sendOrderConfirmation(ctx, req.Email, orderResult); err != nil {
-		log.Warnf("failed to send order confirmation to %q: %+v", req.Email, err)
+		log.WithFields(getTraceContext(ctx)).Warnf("failed to send order confirmation to %q: %+v", req.Email, err)
 	} else {
-		log.Infof("order confirmation email sent to %q", req.Email)
+		log.WithFields(getTraceContext(ctx)).Infof("order confirmation email sent to %q", req.Email)
 	}
 
 	// send to kafka only if kafka broker address is set
 	if cs.kafkaBrokerSvcAddr != "" {
-		log.Infof("sending to postProcessor")
+		log.WithFields(getTraceContext(ctx)).Infof("sending to postProcessor")
 		cs.sendToPostProcessor(ctx, orderResult)
 	}
 
