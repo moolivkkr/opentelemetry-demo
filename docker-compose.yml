@@ -11,6 +11,7 @@ volumes:
   opensearch-data1:
   opensearch-data2:
   prometheus_data:
+  data:
 
 networks:
   default:
@@ -718,9 +719,9 @@ services:
       - prometheus
       - opensearch-node1
       - opensearch-node2
-      - opensearch-dashboards
-      - kafka
+      - opensearch-dashboards      
       - grafana
+      - openobserve
     logging: *logging
     environment:
       - ENVOY_PORT
@@ -873,3 +874,27 @@ services:
     logging: *logging
     depends_on:
       - opensearch-dashboards
+
+
+  openobserve:
+    image: public.ecr.aws/zinclabs/openobserve:latest
+    restart: unless-stopped
+    environment:
+      ZO_ROOT_USER_EMAIL: "root@opentelemetry-demo.com"
+      ZO_ROOT_USER_PASSWORD: "myPassword123#"
+    ports:
+      - "5080:5080"
+    volumes:
+      - data:/data
+
+  aspire:  
+    image: mcr.microsoft.com/dotnet/aspire-dashboard:latest
+    container_name: aspire
+    restart: unless-stopped
+    expose:
+      - 18888
+      - 18889
+      - 4317
+    ports:
+      - "${ASPIRE_PORT_APP}:${ASPIRE_PORT_APP}"
+      - "${ASPIRE_PORT_GRPC}:${ASPIRE_PORT_GRPC}"

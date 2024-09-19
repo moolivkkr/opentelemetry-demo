@@ -20,7 +20,7 @@ const { RuntimeNodeInstrumentation } = require('@opentelemetry/instrumentation-r
 const {process} = require("process");
 const winston = require('winston');
 const { SemanticResourceAttributes } = require('@opentelemetry/semantic-conventions');
-
+const {HostMetrics} = require('@opentelemetry/host-metrics');
 
 const otel_service_name = "paymentservice";
 const resource = new Resource({
@@ -38,10 +38,20 @@ logsAPI.logs.setGlobalLoggerProvider(loggerProvider);
 const traceExporter = new OTLPTraceExporter();
 const spanProcessor = new BatchSpanProcessor(traceExporter)
 
+const metricReader = new PeriodicExportingMetricReader({
+  exporter: new OTLPMetricExporter(),
+  resource: resource,
+})
+const hostMetrics  = new HostMetrics({metricReader, resource: resource, interval: 30000});
+
+
+
 const sdk = new opentelemetry.NodeSDK({  
+  resource: resource,
   logProvider: loggerProvider,  
   traceExporter:traceExporter ,
   spanProcessor: spanProcessor,
+  metricReader: metricReader,
   instrumentations: [
     new WinstonInstrumentation({
       logHook: (span, record) => {
@@ -71,20 +81,19 @@ const sdk = new opentelemetry.NodeSDK({
       autoDetectResources: true     
     })
   ],
-  metricReader: new PeriodicExportingMetricReader({
-    exporter: new OTLPMetricExporter()
-  }),   
-   
 })
+
 
 try{
   sdk.start();
+  hostMetrics.start();
   console.info(" initialization completed for opentelemetry SDK")
 
 }
 catch(error){
   console.error("Error initializing opentelemetry SDK, no telemetry would be generated", error)
 }
+
 
 
 // process.on("SIGTERM", () => {

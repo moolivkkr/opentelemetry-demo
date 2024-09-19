@@ -166,6 +166,14 @@ exporters:
     tls:
       insecure: true
       insecure_skip_verify: true
+  otlp/openobserve:
+    endpoint: openobserve:5081
+    headers:
+      Authorization: "Basic cm9vdEBvcGVudGVsZW1ldHJ5LWRlbW8uY29tOm15UGFzc3dvcmQxMjMj"
+      organization: opentelemetry-demo
+      stream-name: oteldemo
+    tls:
+      insecure: true
 
 
 processors:
@@ -193,7 +201,10 @@ processors:
           # could be removed when https://github.com/vercel/next.js/pull/64852 is fixed upstream
           - replace_pattern(name, "\\?.*", "")
           - replace_match(name, "GET /api/products/*", "GET /api/products/{productId}")
-
+  resourcedetection:
+    detectors: [env,system,docker]
+    timeout: 2s
+    override: false
 connectors:
   spanmetrics:
 
@@ -202,13 +213,13 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [transform/spans, batch]
-      exporters: [otlp, debug, spanmetrics, otlp/traces]
+      processors: [transform/spans,resourcedetection, batch]
+      exporters: [otlp, debug, spanmetrics, otlp/traces,otlp/openobserve]
     metrics:
-      receivers: [hostmetrics, docker_stats, httpcheck/frontendproxy, otlp, prometheus, redis, spanmetrics]
-      processors: [filter/ottl, transform/metrics, batch]
-      exporters: [ otlp/metrics,debug]
+      receivers: [hostmetrics, httpcheck/frontendproxy, otlp, prometheus, redis, spanmetrics]
+      processors: [filter/ottl, transform/metrics,resourcedetection, batch]
+      exporters: [ otlp/metrics,debug,otlp/openobserve]
     logs:
       receivers: [otlp]
-      processors: [batch]
-      exporters: [otlp/logs,  debug]
+      processors: [resourcedetection, batch]
+      exporters: [otlp/logs,  debug,otlp/openobserve]

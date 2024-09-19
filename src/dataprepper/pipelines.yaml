@@ -16,7 +16,7 @@ otel-logs-pipeline:
         password: "myPassword123#"
         insecure: true
         index_type: custom
-        index: otel-events-%{yyyy.MM.dd}
+        index: logs-%{yyyy.MM.dd}
         bulk_size: 4
 
 entry-pipeline:
@@ -65,8 +65,8 @@ otel-metrics-pipeline:
       ssl: false
   buffer:
     bounded_blocking:
-      buffer_size: 1024 # max number of records the buffer accepts
-      batch_size: 1024 # max number of records the buffer drains after each read
+      buffer_size: 12800 # max number of records the buffer accepts
+      batch_size: 512 # max number of records the buffer drains after each read
   processor:
     - otel_metrics:
         calculate_histogram_buckets: true
@@ -80,7 +80,7 @@ otel-metrics-pipeline:
         password: "myPassword123#"
         insecure: true
         index_type: custom
-        index: ss4o_metrics-otel-%{yyyy.MM.dd}
+        index: metrics-%{yyyy.MM.dd}
         bulk_size: 4
         template_type: index-template
         template_content: >
