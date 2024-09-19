@@ -7,16 +7,16 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/uptrace/opentelemetry-go-extra/otellogrus"
+	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc"
+	"go.opentelemetry.io/otel/log/global"
+	"go.opentelemetry.io/otel/trace"
 	"net"
 	"net/http"
 	"os"
 	"strconv"
 	"sync"
 	"time"
-
-	"go.opentelemetry.io/otel/attribute"
-	semconv "go.opentelemetry.io/otel/semconv/v1.24.0"
-	"go.opentelemetry.io/otel/trace"
 
 	"github.com/IBM/sarama"
 	"github.com/google/uuid"
@@ -28,13 +28,16 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/contrib/instrumentation/runtime"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	otelcodes "go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/propagation"
+	sdklog "go.opentelemetry.io/otel/sdk/log"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	sdkresource "go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	semconv "go.opentelemetry.io/otel/semconv/v1.24.0"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
@@ -68,6 +71,16 @@ func init() {
 		TimestampFormat: time.RFC3339Nano,
 	}
 	log.Out = os.Stdout
+
+	// Add OpenTelemetry hook
+	otelHook := otellogrus.NewHook(otellogrus.WithLevels(
+		logrus.PanicLevel,
+		logrus.FatalLevel,
+		logrus.ErrorLevel,
+		logrus.WarnLevel,
+		logrus.InfoLevel,
+	))
+	log.AddHook(otelHook)
 }
 
 func initResource() *sdkresource.Resource {
@@ -119,6 +132,30 @@ func initMeterProvider() *sdkmetric.MeterProvider {
 	return mp
 }
 
+func newLoggerProvider(ctx context.Context, res *sdkresource.Resource) (*sdklog.LoggerProvider, error) {
+	// Create the OTLP gRPC exporter
+	exporter, err := otlploggrpc.New(ctx,
+		otlploggrpc.WithInsecure(),
+		otlploggrpc.WithEndpoint("localhost:4317"), // Default gRPC endpoint
+		otlploggrpc.WithDialOption(grpc.WithTransportCredentials(insecure.NewCredentials())),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create OTLP gRPC log exporter: %v", err)
+	}
+
+	batcher := sdklog.NewBatchProcessor(exporter,
+		sdklog.WithExportTimeout(5*time.Second),
+		sdklog.WithExportMaxBatchSize(10),
+	)
+
+	loggerProvider := sdklog.NewLoggerProvider(
+		sdklog.WithResource(res),
+		sdklog.WithProcessor(batcher),
+	)
+
+	return loggerProvider, nil
+}
+
 type checkoutService struct {
 	productCatalogSvcAddr string
 	cartSvcAddr           string
@@ -141,6 +178,37 @@ func main() {
 	var port string
 	mustMapEnv(&port, "CHECKOUT_SERVICE_PORT")
 
+	ctx := context.Background()
+
+	res, err := sdkresource.New(ctx,
+		sdkresource.WithAttributes(
+			semconv.ServiceNameKey.String("checkoutservice"),
+			semconv.ServiceVersionKey.String("1.0.0"),
+		),
+	)
+	if err != nil {
+		fmt.Printf("failed to create resource: %v\n", err)
+		return
+	}
+
+	loggerProvider, err := newLoggerProvider(ctx, res)
+	if err != nil {
+		fmt.Printf("failed to create logger provider: %v\n", err)
+		return
+	}
+
+	// Set the global LoggerProvider
+	global.SetLoggerProvider(loggerProvider)
+
+	// Ensure all logs are flushed before the program exits
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := loggerProvider.Shutdown(ctx); err != nil {
+			fmt.Printf("failed to shutdown LoggerProvider: %v\n", err)
+		}
+	}()
+
 	tp := initTracerProvider()
 	defer func() {
 		if err := tp.Shutdown(context.Background()); err != nil {
@@ -155,7 +223,7 @@ func main() {
 		}
 	}()
 
-	err := runtime.Start(runtime.WithMinimumReadMemStatsInterval(time.Second))
+	err = runtime.Start(runtime.WithMinimumReadMemStatsInterval(time.Second))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -245,6 +313,12 @@ func (cs *checkoutService) PlaceOrder(ctx context.Context, req *pb.PlaceOrderReq
 		attribute.String("app.user.id", req.UserId),
 		attribute.String("app.user.currency", req.UserCurrency),
 	)
+
+	log.WithFields(logrus.Fields{
+		"traceID": span.SpanContext().TraceID().String(),
+		"spanID":  span.SpanContext().SpanID().String(),
+	}).Info("place order")
+
 	log.Infof("[PlaceOrder] user_id=%q user_currency=%q", req.UserId, req.UserCurrency)
 
 	var err error
