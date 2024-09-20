@@ -24,15 +24,15 @@ const {HostMetrics} = require('@opentelemetry/host-metrics');
 
 const otel_service_name = "paymentservice";
 const resource = new Resource({
-  ["service.name"]: otel_service_name
+  ["service.name"]: otel_service_name,
+  ["service_name"]: otel_service_name
 });
 const { WinstonInstrumentation } = require('@opentelemetry/instrumentation-winston');
 const { OpenTelemetryTransportV3 } = require('@opentelemetry/winston-transport');
 
-const loggerProvider = new LoggerProvider();
+const loggerProvider = new LoggerProvider({resource: resource});
 const logExporter = new OTLPLogExporter();
 loggerProvider.addLogRecordProcessor(new BatchLogRecordProcessor(logExporter));
-loggerProvider.resource = resource;
 logsAPI.logs.setGlobalLoggerProvider(loggerProvider);
 
 const traceExporter = new OTLPTraceExporter();
@@ -42,7 +42,7 @@ const metricReader = new PeriodicExportingMetricReader({
   exporter: new OTLPMetricExporter(),
   resource: resource,
 })
-const hostMetrics  = new HostMetrics({metricReader, resource: resource, interval: 30000});
+const hostMetrics  = new HostMetrics({metricReader, name: otel_service_name, interval: 30000});
 
 
 
@@ -57,7 +57,7 @@ const sdk = new opentelemetry.NodeSDK({
       logHook: (span, record) => {
         const spanContext = span.spanContext();
         record['service.name'] = otel_service_name;
-        record['serviceName'] = otel_service_name;
+        record['service_name'] = otel_service_name;
         record['trace_id'] = spanContext.traceId;
         record['span_id'] = spanContext.spanId;
         record['trace_flags'] = spanContext.traceFlags;        
@@ -85,8 +85,9 @@ const sdk = new opentelemetry.NodeSDK({
 
 
 try{
-  sdk.start();
   hostMetrics.start();
+  sdk.start();
+  
   console.info(" initialization completed for opentelemetry SDK")
 
 }
