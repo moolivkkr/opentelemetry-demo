@@ -8,6 +8,7 @@ using StackExchange.Redis;
 using Google.Protobuf;
 using Microsoft.Extensions.Logging;
 
+
 namespace cartservice.cartstore;
 
 public class ValkeyCartStore : ICartStore
@@ -59,48 +60,56 @@ public class ValkeyCartStore : ICartStore
         {
             return;
         }
+        
 
         // Connection is closed or failed - open a new one but only at the first thread
         lock (_locker)
         {
-            if (_isRedisConnectionOpened)
+            try
             {
-                return;
-            }
 
-            _logger.LogDebug("Connecting to Redis: {_connectionString}", _connectionString);
-            _redis = ConnectionMultiplexer.Connect(_redisConnectionOptions);
+                if (_isRedisConnectionOpened)
+                {
+                    return;
+                }
 
-            if (_redis == null || !_redis.IsConnected)
-            {
-                _logger.LogError("Wasn't able to connect to redis");
+                _logger.LogDebug("Connecting to Redis: {_connectionString}", _connectionString);
+                _redis = ConnectionMultiplexer.Connect(_redisConnectionOptions);
 
-                // We weren't able to connect to Redis despite some retries with exponential backoff.
-                throw new ApplicationException("Wasn't able to connect to redis");
-            }
+                if (_redis == null || !_redis.IsConnected)
+                {
+                    // We weren't able to connect to Redis despite some retries with exponential backoff.
+                    throw new ApplicationException("Unable to connect to redis.We weren't able to connect to Redis despite some retries with exponential backoff.");
+                }
 
-            _logger.LogInformation("Successfully connected to Redis");
-            var cache = _redis.GetDatabase();
+                _logger.LogInformation("Successfully connected to Redis");
+                var cache = _redis.GetDatabase();
 
-            _logger.LogDebug("Performing small test");
-            cache.StringSet("cart", "OK" );
-            object res = cache.StringGet("cart");
-            _logger.LogDebug("Small test result: {res}", res);
+                _logger.LogDebug("Performing small test");
+                cache.StringSet("cart", "OK" );
+                object res = cache.StringGet("cart");
+                _logger.LogDebug("Small test result: {res}", res);
 
-            _redis.InternalError += (_, e) => { Console.WriteLine(e.Exception); };
-            _redis.ConnectionRestored += (_, _) =>
-            {
+                _redis.InternalError += (_, e) => { Console.WriteLine(e.Exception); };
+                _redis.ConnectionRestored += (_, _) =>
+                {
+                    _isRedisConnectionOpened = true;
+                    _logger.LogInformation("Connection to redis was restored successfully.");
+                };
+                _redis.ConnectionFailed += (_, _) =>
+                {
+                    _logger.LogInformation("Connection failed. Disposing the object");
+                    _isRedisConnectionOpened = false;
+                };
+
                 _isRedisConnectionOpened = true;
-                _logger.LogInformation("Connection to redis was restored successfully.");
-            };
-            _redis.ConnectionFailed += (_, _) =>
+            }
+            catch (Exception ex)
             {
-                _logger.LogInformation("Connection failed. Disposing the object");
-                _isRedisConnectionOpened = false;
-            };
-
-            _isRedisConnectionOpened = true;
+                _logger.LogError(ex, "Error retrieving cart for user");
+            }
         }
+        
     }
 
     public async Task AddItemAsync(string userId, string productId, int quantity)
@@ -144,6 +153,7 @@ public class ValkeyCartStore : ICartStore
         }
         catch (Exception ex)
         {
+            _logger.LogError(ex, "AddItemAsync - Error retrieving cart for user");
             throw new RpcException(new Status(StatusCode.FailedPrecondition, $"Can't access cart storage. {ex}"));
         }
     }
@@ -163,6 +173,7 @@ public class ValkeyCartStore : ICartStore
         }
         catch (Exception ex)
         {
+            _logger.LogError(ex, "Error retrieving cart for user");
             throw new RpcException(new Status(StatusCode.FailedPrecondition, $"Can't access cart storage. {ex}"));
         }
     }
@@ -190,6 +201,7 @@ public class ValkeyCartStore : ICartStore
         }
         catch (Exception ex)
         {
+            _logger.LogError(ex, "GetCartAsync - Error retrieving cart for user");
             throw new RpcException(new Status(StatusCode.FailedPrecondition, $"Can't access cart storage. {ex}"));
         }
     }

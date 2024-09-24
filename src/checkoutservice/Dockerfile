@@ -3,7 +3,9 @@
 
 
 FROM golang:1.22-alpine AS builder
-
+#ENV GOPROXY=direct
+#ENV GOSUMDB=off
+ENV GOPROXY=https://goproxy.io
 WORKDIR /usr/src/app/
 
 RUN apk update \

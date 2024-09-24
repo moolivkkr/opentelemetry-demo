@@ -92,7 +92,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 260M
+          memory: 160M
     restart: unless-stopped
     ports:
       - "${CART_SERVICE_PORT}:${CART_SERVICE_PORT}"
@@ -126,7 +126,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 300M
+          memory: 20M
     restart: unless-stopped
     ports:
       - "${CHECKOUT_SERVICE_PORT}:${CHECKOUT_SERVICE_PORT}"
@@ -178,7 +178,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 200M
+          memory: 20M
     restart: unless-stopped
     ports:
       - "${CURRENCY_SERVICE_PORT}:${CURRENCY_SERVICE_PORT}"
@@ -204,7 +204,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 200M
+          memory: 100M
     restart: unless-stopped
     ports:
       - "${EMAIL_SERVICE_PORT}:${EMAIL_SERVICE_PORT}"
@@ -321,7 +321,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 300M
+          memory: 50M
     restart: unless-stopped
     ports:
       - "${ENVOY_PORT}"
@@ -368,7 +368,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 320M
+          memory: 120M
     restart: unless-stopped
     ports:
       - "${IMAGE_PROVIDER_PORT}:${IMAGE_PROVIDER_PORT}"
@@ -433,7 +433,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 220M
+          memory: 120M
     restart: unless-stopped
     ports:
       - "${PAYMENT_SERVICE_PORT}:${PAYMENT_SERVICE_PORT}"
@@ -464,7 +464,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 600M
+          memory: 20M
     restart: unless-stopped
     ports:
       - "${PRODUCT_CATALOG_SERVICE_PORT}:${PRODUCT_CATALOG_SERVICE_PORT}"
@@ -495,7 +495,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 240M
+          memory: 40M
     restart: unless-stopped
     ports:
       - "${QUOTE_SERVICE_PORT}:${QUOTE_SERVICE_PORT}"
@@ -523,7 +523,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 600M               # This is high to enable supporting the recommendationCache feature flag use case
+          memory: 500M               # This is high to enable supporting the recommendationCache feature flag use case
     restart: unless-stopped
     ports:
       - "${RECOMMENDATION_SERVICE_PORT}:${RECOMMENDATION_SERVICE_PORT}"
@@ -559,7 +559,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 200M
+          memory: 20M
     restart: unless-stopped
     ports:
       - "${SHIPPING_SERVICE_PORT}:${SHIPPING_SERVICE_PORT}"
@@ -640,7 +640,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 200M
+          memory: 20M
     restart: unless-stopped
     ports:
       - "${VALKEY_PORT}"
@@ -716,6 +716,9 @@ services:
     depends_on:
       - jaeger
       - prometheus
+      - opensearch-node1
+      - opensearch-node2
+      - opensearch-dashboards
       - kafka
       - grafana
     logging: *logging
@@ -725,9 +728,6 @@ services:
       - OTEL_COLLECTOR_HOST
       - OTEL_COLLECTOR_PORT_GRPC
       - OTEL_COLLECTOR_PORT_HTTP
-      - AWS_OPENSEARCH_USERNAME
-      - AWS_OPENSEARCH_PASSWORD
-      - AWS_OPENSEARCH_ENDPOINT
 
   # Prometheus
   prometheus:
@@ -783,7 +783,73 @@ services:
   #   logging: *logging
 
 
-  
+  opensearch-node1:
+    image: ${OPENSEARCH_IMAGE}
+    container_name: opensearch-node1
+    environment:
+      - cluster.name=demo-cluster
+      - node.name=opensearch-node1
+      - discovery.seed_hosts=opensearch-node1,opensearch-node2
+      - cluster.initial_cluster_manager_nodes=opensearch-node1,opensearch-node2
+      - plugins.query.datasources.encryption.masterkey=8e3f206ea7c07cc1bfc5cf40
+      - bootstrap.memory_lock=true # along with the memlock settings below, disables swapping
+      - "OPENSEARCH_JAVA_OPTS=-Xms2g -Xmx2g" # minimum and maximum Java heap size, recommend setting both to 50% of system RAM
+      - "OPENSEARCH_INITIAL_ADMIN_PASSWORD=${OPENSEARCH_ADMIN_PASSWORD}"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536 # maximum number of open files for the OpenSearch user, set to at least 65536 on modern systems
+        hard: 65536
+    volumes:
+      - opensearch-data1:/usr/share/opensearch/data/${OPENSEARCH_VERSION}
+    ports:
+      - 9200:9200
+      - 9600:9600 # required for Performance Analyzer
+
+
+  opensearch-node2:
+    image: ${OPENSEARCH_IMAGE}
+    container_name: opensearch-node2
+    environment:
+      - cluster.name=demo-cluster
+      - node.name=opensearch-node2
+      - discovery.seed_hosts=opensearch-node1,opensearch-node2
+      - cluster.initial_cluster_manager_nodes=opensearch-node1,opensearch-node2
+      - bootstrap.memory_lock=true
+      - plugins.query.datasources.encryption.masterkey=8e3f206ea7c07cc1bfc5cf40
+      - "OPENSEARCH_JAVA_OPTS=-Xms2g -Xmx2g"
+      - "OPENSEARCH_INITIAL_ADMIN_PASSWORD=${OPENSEARCH_ADMIN_PASSWORD}"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+    volumes:
+      - opensearch-data2:/usr/share/opensearch/data/${OPENSEARCH_VERSION}
+    ports:
+      - 9200
+      - 9600 # required for Performance Analyzer
+
+
+  opensearch-dashboards:
+    image: opensearchproject/opensearch-dashboards:${OPENSEARCH_VERSION}
+    container_name: opensearch-dashboards
+    ports:
+      - 5601:5601
+    expose:
+      - "5601"
+    environment:
+      - 'OPENSEARCH_HOSTS=["https://opensearch-node1:9200","https://opensearch-node2:9200"]'
+    depends_on:
+      - opensearch-node1
+      - opensearch-node2
+    volumes:
+      - ./src/dashboards/config/opensearch_dashboards.yml:/usr/share/opensearch-dashboards/config/opensearch_dashboards.yml
+
   # OpenSearch store - dashboard
   data-prepper:
     platform: linux/amd64
@@ -805,8 +871,5 @@ services:
       - "21891"
       - "21892"
     logging: *logging
-    environment:
-      - AWS_OPENSEARCH_USERNAME
-      - AWS_OPENSEARCH_PASSWORD
-      - AWS_OPENSEARCH_ENDPOINT
-    
+    depends_on:
+      - opensearch-dashboards

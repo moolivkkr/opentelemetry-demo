@@ -4,8 +4,8 @@
 extensions:
   basicauth/client:
     client_auth:
-      username: admin
-      password: MyPassword123#
+      username: ${env:AWS_OPENSEARCH_USERNAME}
+      password: ${env:AWS_OPENSEARCH_PASSWORD}
 
 receivers:
   otlp:
@@ -125,7 +125,7 @@ exporters:
       insecure: true
   opensearch/traces:
     http:
-      endpoint: https://opensearch-node1:9200
+      endpoint: ${env:AWS_OPENSEARCH_ENDPOINT}
       auth:
         authenticator: basicauth/client
       tls:
@@ -139,7 +139,7 @@ exporters:
     dataset: traces
   opensearch/logs:
     http:
-      endpoint: https://opensearch-node1:9200
+      endpoint: ${env:AWS_OPENSEARCH_ENDPOINT}
       auth:
         authenticator: basicauth/client
       tls:
@@ -166,14 +166,6 @@ exporters:
     tls:
       insecure: true
       insecure_skip_verify: true
-  otlp/openobserve:
-    endpoint: openobserve:5081
-    headers:
-      Authorization: "Basic cm9vdEBvcGVudGVsZW1ldHJ5LWRlbW8uY29tOm15UGFzc3dvcmQxMjMj"
-      organization: opentelemetry-demo
-      stream-name: oteldemo
-    tls:
-      insecure: true
 
 
 processors:
@@ -201,10 +193,7 @@ processors:
           # could be removed when https://github.com/vercel/next.js/pull/64852 is fixed upstream
           - replace_pattern(name, "\\?.*", "")
           - replace_match(name, "GET /api/products/*", "GET /api/products/{productId}")
-  resourcedetection:
-    detectors: [env,system,docker]
-    timeout: 2s
-    override: false
+
 connectors:
   spanmetrics:
 
@@ -213,13 +202,13 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [transform/spans,resourcedetection, batch]
-      exporters: [otlp, debug, spanmetrics, otlp/traces,otlp/openobserve]
+      processors: [transform/spans, batch]
+      exporters: [otlp, debug, spanmetrics, otlp/traces]
     metrics:
-      receivers: [hostmetrics, httpcheck/frontendproxy, otlp, prometheus, redis, spanmetrics]
-      processors: [filter/ottl, transform/metrics,resourcedetection, batch]
-      exporters: [ otlp/metrics,debug,otlp/openobserve]
+      receivers: [hostmetrics, docker_stats, httpcheck/frontendproxy, otlp, prometheus, redis, spanmetrics]
+      processors: [filter/ottl, transform/metrics, batch]
+      exporters: [ otlp/metrics,debug]
     logs:
       receivers: [otlp]
-      processors: [resourcedetection, batch]
-      exporters: [otlp/logs,  debug,otlp/openobserve]
+      processors: [batch]
+      exporters: [otlp/logs,  debug]

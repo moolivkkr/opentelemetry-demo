@@ -11,12 +11,12 @@ otel-logs-pipeline:
     bounded_blocking:
   sink:
     - opensearch:
-        hosts: ["https://opensearch-node1:9200"]
-        username: "admin"
-        password: "myPassword123#"
-        insecure: true
+        hosts: ["AWS_ES_ENDPOINT"]
+        username: ""
+        password: ""
+        insecure: false
         index_type: custom
-        index: logs-%{yyyy.MM.dd}
+        index: otel-events-%{yyyy.MM.dd}
         bulk_size: 4
 
 entry-pipeline:
@@ -29,6 +29,7 @@ entry-pipeline:
         name: "raw-pipeline"
     - pipeline:
         name: "service-map-pipeline"
+
 raw-pipeline:
   source:
     pipeline:
@@ -37,11 +38,14 @@ raw-pipeline:
     - otel_trace_raw:
   sink:
     - opensearch:
-        hosts: [ "https://opensearch-node1:9200" ]
-        insecure: true        
-        username: "admin"
-        password: "myPassword123#"
-        index_type: trace-analytics-raw
+        hosts: [ "AWS_ES_ENDPOINT" ]
+        insecure: false        
+        username: ""
+        password: "$"
+        index_type: custom
+        index: otel-traces-%{yyyy.MM.dd}
+        bulk_size: 4
+
 service-map-pipeline:
   delay: "100"
   source:
@@ -51,11 +55,12 @@ service-map-pipeline:
     - service_map_stateful:
   sink:
     - opensearch:
-        hosts: ["https://opensearch-node1:9200"]
-        insecure: true
-        username: "admin"
-        password: "myPassword123#"
+        hosts: ["AWS_ES_ENDPOINT"]
+        insecure: false
+        username: ""
+        password: "$"
         index_type: trace-analytics-service-map
+        
 otel-metrics-pipeline:
   workers: 8
   delay: 3000
@@ -65,8 +70,8 @@ otel-metrics-pipeline:
       ssl: false
   buffer:
     bounded_blocking:
-      buffer_size: 12800 # max number of records the buffer accepts
-      batch_size: 512 # max number of records the buffer drains after each read
+      buffer_size: 1024 # max number of records the buffer accepts
+      batch_size: 1024 # max number of records the buffer drains after each read
   processor:
     - otel_metrics:
         calculate_histogram_buckets: true
@@ -75,12 +80,12 @@ otel-metrics-pipeline:
         flatten_attributes: false
   sink:
     - opensearch:
-        hosts: ["https://opensearch-node1:9200"]
-        username: "admin"
-        password: "myPassword123#"
-        insecure: true
+        hosts: ["AWS_ES_ENDPOINT"]
+        username: ""
+        password: "$"
+        insecure: false
         index_type: custom
-        index: metrics-%{yyyy.MM.dd}
+        index: ss4o_metrics-otel-%{yyyy.MM.dd}
         bulk_size: 4
         template_type: index-template
         template_content: >

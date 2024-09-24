@@ -33,7 +33,15 @@ public class CartService : Oteldemo.CartService.CartServiceBase
         activity?.SetTag("app.product.id", request.Item.ProductId);
         activity?.SetTag("app.product.quantity", request.Item.Quantity);
 
-        await _cartStore.AddItemAsync(request.UserId, request.Item.ProductId, request.Item.Quantity);
+        try{
+            await _cartStore.AddItemAsync(request.UserId, request.Item.ProductId, request.Item.Quantity);
+        }
+        catch (RpcException ex)
+        {
+            activity?.RecordException(ex);
+            activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+            throw;
+        }
         return Empty;
     }
 
@@ -43,15 +51,24 @@ public class CartService : Oteldemo.CartService.CartServiceBase
         activity?.SetTag("app.user.id", request.UserId);
         activity?.AddEvent(new("Fetch cart"));
 
-        var cart = await _cartStore.GetCartAsync(request.UserId);
-        var totalCart = 0;
-        foreach (var item in cart.Items)
+        try
         {
-            totalCart += item.Quantity;
+            var cart = await _cartStore.GetCartAsync(request.UserId);
+            var totalCart = 0;
+            foreach (var item in cart.Items)
+            {
+                totalCart += item.Quantity;
+            }
+            activity?.SetTag("app.cart.items.count", totalCart);
+            return cart;
         }
-        activity?.SetTag("app.cart.items.count", totalCart);
-
-        return cart;
+        catch (RpcException ex)
+        {
+            activity?.RecordException(ex);
+            activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+            throw;
+        }
+        return new Cart();
     }
 
     public override async Task<Empty> EmptyCart(EmptyCartRequest request, ServerCallContext context)
