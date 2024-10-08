@@ -61,6 +61,28 @@ var tracer trace.Tracer
 var resource *sdkresource.Resource
 var initResourcesOnce sync.Once
 
+// contextHook is a custom Logrus hook that adds context information to log entries.
+type contextHook struct{}
+
+// Levels returns the log levels for which this hook is activated.
+func (h *contextHook) Levels() []logrus.Level {
+    return logrus.AllLevels
+}
+
+func (h *contextHook) Fire(entry *logrus.Entry) error {
+    if ctx, ok := entry.Data["context"].(context.Context); ok {
+        span := trace.SpanFromContext(ctx)
+        if span.SpanContext().IsValid() {
+            entry.Data["traceId"] = span.SpanContext().TraceID().String()
+            entry.Data["spanId"] = span.SpanContext().SpanID().String()
+			entry.Data["trace_id"] = span.SpanContext().TraceID().String()
+            entry.Data["span_id"] = span.SpanContext().SpanID().String()
+        }
+        // delete(entry.Data, "context") // Remove context from entry data to avoid logging it directly
+    }
+    return nil
+}
+
 func init() {
 	log = logrus.New()
 	log.Level = logrus.InfoLevel
@@ -322,6 +344,10 @@ func (cs *checkoutService) PlaceOrder(ctx context.Context, req *pb.PlaceOrderReq
 		attribute.String("app.user.id", req.UserId),
 		attribute.String("app.user.currency", req.UserCurrency),
 	)
+
+    // traceContext := getTraceContext(ctx)
+    // entry := logrus.WithContext(ctx).WithFields(traceContext)
+    // entry.Infof("[PlaceOrder] user_id=%q user_currency=%q", req.UserId, req.UserCurrency)
 
 	log.WithFields(getTraceContext(ctx)).Infof("[PlaceOrder] user_id=%q user_currency=%q", req.UserId, req.UserCurrency)
 
