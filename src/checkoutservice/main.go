@@ -73,8 +73,6 @@ func (h *contextHook) Fire(entry *logrus.Entry) error {
     if ctx, ok := entry.Data["context"].(context.Context); ok {
         span := trace.SpanFromContext(ctx)
         if span.SpanContext().IsValid() {
-            entry.Data["traceId"] = span.SpanContext().TraceID().String()
-            entry.Data["spanId"] = span.SpanContext().SpanID().String()
 			entry.Data["trace_id"] = span.SpanContext().TraceID().String()
             entry.Data["span_id"] = span.SpanContext().SpanID().String()
         }
