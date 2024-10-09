@@ -51,6 +51,16 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 )
 
+
+
+
+var (
+	log               *logrus.Logger
+	catalog           []*pb.Product
+	resource          *sdkresource.Resource
+	initResourcesOnce sync.Once
+)
+
 // contextHook is a custom Logrus hook that adds context information to log entries.
 type contextHook struct{}
 
@@ -72,15 +82,6 @@ func (h *contextHook) Fire(entry *logrus.Entry) error {
     }
     return nil
 }
-
-
-
-var (
-	log               *logrus.Logger
-	catalog           []*pb.Product
-	resource          *sdkresource.Resource
-	initResourcesOnce sync.Once
-)
 
 func init() {
 	log = logrus.New()
@@ -166,8 +167,8 @@ func newLoggerProvider(ctx context.Context, res *sdkresource.Resource) (*sdklog.
 func getTraceContext(ctx context.Context) logrus.Fields {
 	span := trace.SpanFromContext(ctx)
 	return logrus.Fields{
-		"trace_id": span.SpanContext().TraceID().String(),
-		"span_id":  span.SpanContext().SpanID().String(),
+		"traceId": span.SpanContext().TraceID().String(),
+		"spanId":  span.SpanContext().SpanID().String(),
 	}
 }
 
@@ -245,11 +246,11 @@ func main() {
 	var port string
 	mustMapEnv(&port, "PRODUCT_CATALOG_SERVICE_PORT")
 
-	log.Infof("ProductCatalogService gRPC server started on port: %s", port)
+	log.WithContext(ctx).Infof("ProductCatalogService gRPC server started on port: %s", port)
 
 	ln, err := net.Listen("tcp", fmt.Sprintf(":%s", port))
 	if err != nil {
-		log.Fatalf("TCP Listen: %v", err)
+		log.WithContext(ctx).Fatalf("TCP Listen: %v", err)
 	}
 
 	srv := grpc.NewServer(
@@ -266,14 +267,14 @@ func main() {
 
 	go func() {
 		if err := srv.Serve(ln); err != nil {
-			log.Fatalf("Failed to serve gRPC server, err: %v", err)
+			log.WithContext(ctx).Fatalf("Failed to serve gRPC server, err: %v", err)
 		}
 	}()
 
 	<-ctx.Done()
 
 	srv.GracefulStop()
-	log.Println("ProductCatalogService gRPC server stopped")
+	log.WithContext(ctx).Println("ProductCatalogService gRPC server stopped")
 }
 
 type productCatalog struct {
@@ -316,7 +317,7 @@ func readProductFiles() ([]*pb.Product, error) {
 		products = append(products, res.Products...)
 	}
 
-	log.Infof("Loaded %d products", len(products))
+	log.WithContext(context.Background()).Infof("Loaded %d products", len(products))
 
 	return products, nil
 }
@@ -354,7 +355,7 @@ func (p *productCatalog) GetProduct(ctx context.Context, req *pb.GetProductReque
 
 	// GetProduct will fail on a specific product when feature flag is enabled
 	if p.checkProductFailure(ctx, req.Id) {
-		log.WithFields(getTraceContext(ctx)).Errorf("Error: ProductCatalogService Fail Feature Flag Enabled")
+		log.WithContext(ctx).Errorf("Error: ProductCatalogService Fail Feature Flag Enabled")
 		msg := fmt.Sprintf("Error: ProductCatalogService Fail Feature Flag Enabled")
 		span.SetStatus(otelcodes.Error, msg)
 		span.AddEvent(msg)
@@ -370,14 +371,14 @@ func (p *productCatalog) GetProduct(ctx context.Context, req *pb.GetProductReque
 	}
 
 	if found == nil {
-		log.WithFields(getTraceContext(ctx)).Errorf("Product Not Found: %s", req.Id)
+		log.WithContext(ctx).Errorf("Product Not Found: %s", req.Id)
 		msg := fmt.Sprintf("Product Not Found: %s", req.Id)
 		span.SetStatus(otelcodes.Error, msg)
 		span.AddEvent(msg)
 		return nil, status.Errorf(codes.NotFound, msg)
 	}
 
-	log.WithFields(getTraceContext(ctx)).Infof("Product Found - ID: %s, Name: %s", req.Id, found.Name)
+	log.WithContext(ctx).Infof("Product Found - ID: %s, Name: %s", req.Id, found.Name)
 	msg := fmt.Sprintf("Product Found - ID: %s, Name: %s", req.Id, found.Name)
 	span.AddEvent(msg)
 	span.SetAttributes(
