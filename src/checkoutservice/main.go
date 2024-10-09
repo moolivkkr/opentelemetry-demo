@@ -228,7 +228,7 @@ func main() {
 	// Set the newly created hook as a global logrus hook
 	log.AddHook(hook)
 
-	log.Infof("Initiated otel log exporting with logrus")
+	log.WithContext(ctx).Infof("Initiated otel log exporting with logrus")
 
 	tp := initTracerProvider()
 	defer func() {
@@ -295,7 +295,7 @@ func main() {
 		}
 	}
 
-	log.Infof("service config: %+v", svc)
+	log.WithContext(ctx).Infof("service config: %+v", svc)
 
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%s", port))
 	if err != nil {
@@ -307,7 +307,7 @@ func main() {
 	)
 	pb.RegisterCheckoutServiceServer(srv, svc)
 	healthpb.RegisterHealthServer(srv, svc)
-	log.Infof("starting to listen on tcp: %q", lis.Addr().String())
+	log.WithContext(ctx).Infof("starting to listen on tcp: %q", lis.Addr().String())
 	err = srv.Serve(lis)
 	log.Fatal(err)
 }
@@ -347,7 +347,7 @@ func (cs *checkoutService) PlaceOrder(ctx context.Context, req *pb.PlaceOrderReq
     // entry := logrus.WithContext(ctx).WithFields(traceContext)
     // entry.Infof("[PlaceOrder] user_id=%q user_currency=%q", req.UserId, req.UserCurrency)
 
-	log.WithFields(getTraceContext(ctx)).Infof("[PlaceOrder] user_id=%q user_currency=%q", req.UserId, req.UserCurrency)
+	log.WithContext(ctx).Infof("[PlaceOrder] user_id=%q user_currency=%q", req.UserId, req.UserCurrency)
 
 	var err error
 	defer func() {
@@ -380,7 +380,7 @@ func (cs *checkoutService) PlaceOrder(ctx context.Context, req *pb.PlaceOrderReq
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to charge card: %+v", err)
 	}
-	log.WithFields(getTraceContext(ctx)).Infof("payment went through (transaction_id: %s)", txID)
+	log.WithContext(ctx).Infof("payment went through (transaction_id: %s)", txID)
 	span.AddEvent("charged",
 		trace.WithAttributes(attribute.String("app.payment.transaction.id", txID)))
 
@@ -413,14 +413,14 @@ func (cs *checkoutService) PlaceOrder(ctx context.Context, req *pb.PlaceOrderReq
 	)
 
 	if err := cs.sendOrderConfirmation(ctx, req.Email, orderResult); err != nil {
-		log.WithFields(getTraceContext(ctx)).Warnf("failed to send order confirmation to %q: %+v", req.Email, err)
+		log.WithContext(ctx).Warnf("failed to send order confirmation to %q: %+v", req.Email, err)
 	} else {
-		log.WithFields(getTraceContext(ctx)).Infof("order confirmation email sent to %q", req.Email)
+		log.WithContext(ctx).Infof("order confirmation email sent to %q", req.Email)
 	}
 
 	// send to kafka only if kafka broker address is set
 	if cs.kafkaBrokerSvcAddr != "" {
-		log.WithFields(getTraceContext(ctx)).Infof("sending to postProcessor")
+		log.WithContext(ctx).Infof("sending to postProcessor")
 		cs.sendToPostProcessor(ctx, orderResult)
 	}
 
@@ -522,12 +522,12 @@ func (cs *checkoutService) prepOrderItems(ctx context.Context, items []*pb.CartI
 	for i, item := range items {
 		product, err := cs.productCatalogSvcClient.GetProduct(ctx, &pb.GetProductRequest{Id: item.GetProductId()})
 		if err != nil {
-			log.WithFields(getTraceContext(ctx)).Errorf("failed to get product #%q", item.GetProductId())
+			log.WithContext(ctx).Errorf("failed to get product #%q", item.GetProductId())
 			return nil, fmt.Errorf("failed to get product #%q", item.GetProductId())
 		}
 		price, err := cs.convertCurrency(ctx, product.GetPriceUsd(), userCurrency)
 		if err != nil {
-			log.WithFields(getTraceContext(ctx)).Errorf("failed to convert price of %q to %s", item.GetProductId(), userCurrency)
+			log.WithContext(ctx).Errorf("failed to convert price of %q to %s", item.GetProductId(), userCurrency)
 			return nil, fmt.Errorf("failed to convert price of %q to %s", item.GetProductId(), userCurrency)
 		}
 		out[i] = &pb.OrderItem{
@@ -561,7 +561,7 @@ func (cs *checkoutService) chargeCard(ctx context.Context, amount *pb.Money, pay
 		Amount:     amount,
 		CreditCard: paymentInfo})
 	if err != nil {
-		log.WithFields(getTraceContext(ctx)).Errorf("could not charge the card: %+v", err)
+		log.WithContext(ctx).Errorf("could not charge the card: %+v", err)
 		return "", fmt.Errorf("could not charge the card: %+v", err)
 	}
 	return paymentResp.GetTransactionId(), nil
@@ -596,7 +596,7 @@ func (cs *checkoutService) shipOrder(ctx context.Context, address *pb.Address, i
 		Address: address,
 		Items:   items})
 	if err != nil {
-		log.WithFields(getTraceContext(ctx)).Errorf("failed to ship order: %+v", err)
+		log.WithContext(ctx).Errorf("failed to ship order: %+v", err)
 		return "", fmt.Errorf("shipment failed: %+v", err)
 	}
 	return resp.GetTrackingId(), nil
@@ -622,7 +622,7 @@ func (cs *checkoutService) sendToPostProcessor(ctx context.Context, result *pb.O
 	startTime := time.Now()
 	select {
 	case cs.KafkaProducerClient.Input() <- &msg:
-		log.Infof("Message sent to Kafka: %v", msg)
+		log.WithContext(ctx).Infof("Message sent to Kafka: %v", msg)
 		select {
 		case successMsg := <-cs.KafkaProducerClient.Successes():
 			span.SetAttributes(
@@ -630,7 +630,7 @@ func (cs *checkoutService) sendToPostProcessor(ctx context.Context, result *pb.O
 				attribute.Int("messaging.kafka.producer.duration_ms", int(time.Since(startTime).Milliseconds())),
 				attribute.KeyValue(semconv.MessagingKafkaMessageOffset(int(successMsg.Offset))),
 			)
-			log.Infof("Successful to write message. offset: %v, duration: %v", successMsg.Offset, time.Since(startTime))
+			log.WithContext(ctx).Infof("Successful to write message. offset: %v, duration: %v", successMsg.Offset, time.Since(startTime))
 		case errMsg := <-cs.KafkaProducerClient.Errors():
 			span.SetAttributes(
 				attribute.Bool("messaging.kafka.producer.success", false),
@@ -658,14 +658,14 @@ func (cs *checkoutService) sendToPostProcessor(ctx context.Context, result *pb.O
 
 	ffValue := cs.getIntFeatureFlag(ctx, "kafkaQueueProblems")
 	if ffValue > 0 {
-		log.Infof("Warning: FeatureFlag 'kafkaQueueProblems' is activated, overloading queue now.")
+		log.WithContext(ctx).Infof("Warning: FeatureFlag 'kafkaQueueProblems' is activated, overloading queue now.")
 		for i := 0; i < ffValue; i++ {
 			go func(i int) {
 				cs.KafkaProducerClient.Input() <- &msg
 				_ = <-cs.KafkaProducerClient.Successes()
 			}(i)
 		}
-		log.Infof("Done with #%d messages for overload simulation.", ffValue)
+		log.WithContext(ctx).Infof("Done with #%d messages for overload simulation.", ffValue)
 	}
 }
 
