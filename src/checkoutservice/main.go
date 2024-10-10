@@ -61,6 +61,28 @@ var tracer trace.Tracer
 var resource *sdkresource.Resource
 var initResourcesOnce sync.Once
 
+// contextHook is a custom Logrus hook that adds context information to log entries.
+type contextHook struct{}
+
+// Levels returns the log levels for which this hook is activated.
+func (h *contextHook) Levels() []logrus.Level {
+    return logrus.AllLevels
+}
+
+func (h *contextHook) Fire(entry *logrus.Entry) error {
+    if ctx, ok := entry.Data["context"].(context.Context); ok {
+        span := trace.SpanFromContext(ctx)
+        if span.SpanContext().IsValid() {
+            entry.Data["traceId"] = span.SpanContext().TraceID().String()
+            entry.Data["spanId"] = span.SpanContext().SpanID().String()
+			entry.Data["trace_id"] = span.SpanContext().TraceID().String()
+            entry.Data["span_id"] = span.SpanContext().SpanID().String()
+        }
+        // delete(entry.Data, "context") // Remove context from entry data to avoid logging it directly
+    }
+    return nil
+}
+
 func init() {
 	log = logrus.New()
 	log.Level = logrus.InfoLevel
@@ -208,7 +230,7 @@ func main() {
 	// Set the newly created hook as a global logrus hook
 	log.AddHook(hook)
 
-	log.Infof("Initiated otel log exporting with logrus")
+	log.WithContext(ctx).Infof("Initiated otel log exporting with logrus")
 
 	tp := initTracerProvider()
 	defer func() {
@@ -275,7 +297,7 @@ func main() {
 		}
 	}
 
-	log.Infof("service config: %+v", svc)
+	log.WithContext(ctx).Infof("service config: %+v", svc)
 
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%s", port))
 	if err != nil {
@@ -287,7 +309,7 @@ func main() {
 	)
 	pb.RegisterCheckoutServiceServer(srv, svc)
 	healthpb.RegisterHealthServer(srv, svc)
-	log.Infof("starting to listen on tcp: %q", lis.Addr().String())
+	log.WithContext(ctx).Infof("starting to listen on tcp: %q", lis.Addr().String())
 	err = srv.Serve(lis)
 	log.Fatal(err)
 }
@@ -311,8 +333,8 @@ func (cs *checkoutService) Watch(req *healthpb.HealthCheckRequest, ws healthpb.H
 func getTraceContext(ctx context.Context) logrus.Fields {
 	span := trace.SpanFromContext(ctx)
 	return logrus.Fields{
-		"_traceId": span.SpanContext().TraceID().String(),
-		"_spanId":  span.SpanContext().SpanID().String(),
+		"traceId": span.SpanContext().TraceID().String(),
+		"spanId":  span.SpanContext().SpanID().String(),
 	}
 }
 
@@ -323,7 +345,11 @@ func (cs *checkoutService) PlaceOrder(ctx context.Context, req *pb.PlaceOrderReq
 		attribute.String("app.user.currency", req.UserCurrency),
 	)
 
-	log.WithFields(getTraceContext(ctx)).Infof("[PlaceOrder] user_id=%q user_currency=%q", req.UserId, req.UserCurrency)
+    // traceContext := getTraceContext(ctx)
+    // entry := logrus.WithContext(ctx).WithFields(traceContext)
+    // entry.Infof("[PlaceOrder] user_id=%q user_currency=%q", req.UserId, req.UserCurrency)
+
+	log.WithContext(ctx).Infof("[PlaceOrder] user_id=%q user_currency=%q", req.UserId, req.UserCurrency)
 
 	var err error
 	defer func() {
@@ -356,7 +382,7 @@ func (cs *checkoutService) PlaceOrder(ctx context.Context, req *pb.PlaceOrderReq
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to charge card: %+v", err)
 	}
-	log.WithFields(getTraceContext(ctx)).Infof("payment went through (transaction_id: %s)", txID)
+	log.WithContext(ctx).Infof("payment went through (transaction_id: %s)", txID)
 	span.AddEvent("charged",
 		trace.WithAttributes(attribute.String("app.payment.transaction.id", txID)))
 
@@ -389,14 +415,14 @@ func (cs *checkoutService) PlaceOrder(ctx context.Context, req *pb.PlaceOrderReq
 	)
 
 	if err := cs.sendOrderConfirmation(ctx, req.Email, orderResult); err != nil {
-		log.WithFields(getTraceContext(ctx)).Warnf("failed to send order confirmation to %q: %+v", req.Email, err)
+		log.WithContext(ctx).Warnf("failed to send order confirmation to %q: %+v", req.Email, err)
 	} else {
-		log.WithFields(getTraceContext(ctx)).Infof("order confirmation email sent to %q", req.Email)
+		log.WithContext(ctx).Infof("order confirmation email sent to %q", req.Email)
 	}
 
 	// send to kafka only if kafka broker address is set
 	if cs.kafkaBrokerSvcAddr != "" {
-		log.WithFields(getTraceContext(ctx)).Infof("sending to postProcessor")
+		log.WithContext(ctx).Infof("sending to postProcessor")
 		cs.sendToPostProcessor(ctx, orderResult)
 	}
 
@@ -477,7 +503,7 @@ func (cs *checkoutService) quoteShipping(ctx context.Context, address *pb.Addres
 func (cs *checkoutService) getUserCart(ctx context.Context, userID string) ([]*pb.CartItem, error) {
 	cart, err := cs.cartSvcClient.GetCart(ctx, &pb.GetCartRequest{UserId: userID})
 	if err != nil {
-		log.Error("failed to get user cart during checkout")
+		log.WithContext(ctx).Errorf("[Error]: failed to get user cart during checkout: %+v", err)
 		return nil, fmt.Errorf("failed to get user cart during checkout: %+v", err)
 	}
 	return cart.GetItems(), nil
@@ -485,7 +511,7 @@ func (cs *checkoutService) getUserCart(ctx context.Context, userID string) ([]*p
 
 func (cs *checkoutService) emptyUserCart(ctx context.Context, userID string) error {
 	if _, err := cs.cartSvcClient.EmptyCart(ctx, &pb.EmptyCartRequest{UserId: userID}); err != nil {
-		log.Error("failed to empty user cart during checkout")
+		log.WithContext(ctx).Error("[Error]: failed to empty user cart during checkout")
 		return fmt.Errorf("failed to empty user cart during checkout: %+v", err)
 	}
 	return nil
@@ -494,13 +520,18 @@ func (cs *checkoutService) emptyUserCart(ctx context.Context, userID string) err
 func (cs *checkoutService) prepOrderItems(ctx context.Context, items []*pb.CartItem, userCurrency string) ([]*pb.OrderItem, error) {
 	out := make([]*pb.OrderItem, len(items))
 
+	ctx, span := tracer.Start(ctx, "prepOrderItems")
+	defer span.End()
+
 	for i, item := range items {
 		product, err := cs.productCatalogSvcClient.GetProduct(ctx, &pb.GetProductRequest{Id: item.GetProductId()})
 		if err != nil {
+			log.WithContext(ctx).Errorf("failed to get product #%q", item.GetProductId())
 			return nil, fmt.Errorf("failed to get product #%q", item.GetProductId())
 		}
 		price, err := cs.convertCurrency(ctx, product.GetPriceUsd(), userCurrency)
 		if err != nil {
+			log.WithContext(ctx).Errorf("failed to convert price of %q to %s", item.GetProductId(), userCurrency)
 			return nil, fmt.Errorf("failed to convert price of %q to %s", item.GetProductId(), userCurrency)
 		}
 		out[i] = &pb.OrderItem{
@@ -521,6 +552,8 @@ func (cs *checkoutService) convertCurrency(ctx context.Context, from *pb.Money, 
 }
 
 func (cs *checkoutService) chargeCard(ctx context.Context, amount *pb.Money, paymentInfo *pb.CreditCardInfo) (string, error) {
+	ctx, span := tracer.Start(ctx, "chargeCard")
+	defer span.End()
 	paymentService := cs.paymentSvcClient
 	if cs.isFeatureFlagEnabled(ctx, "paymentServiceUnreachable") {
 		badAddress := "badAddress:50051"
@@ -532,7 +565,7 @@ func (cs *checkoutService) chargeCard(ctx context.Context, amount *pb.Money, pay
 		Amount:     amount,
 		CreditCard: paymentInfo})
 	if err != nil {
-		log.Error("could not charge the card via payment service")
+		log.WithContext(ctx).Errorf("could not charge the card: %+v", err)
 		return "", fmt.Errorf("could not charge the card: %+v", err)
 	}
 	return paymentResp.GetTransactionId(), nil
@@ -561,10 +594,13 @@ func (cs *checkoutService) sendOrderConfirmation(ctx context.Context, email stri
 }
 
 func (cs *checkoutService) shipOrder(ctx context.Context, address *pb.Address, items []*pb.CartItem) (string, error) {
+	ctx, span := tracer.Start(ctx, "chargeCard")
+	defer span.End()
 	resp, err := cs.shippingSvcClient.ShipOrder(ctx, &pb.ShipOrderRequest{
 		Address: address,
 		Items:   items})
 	if err != nil {
+		log.WithContext(ctx).Errorf("failed to ship order: %+v", err)
 		return "", fmt.Errorf("shipment failed: %+v", err)
 	}
 	return resp.GetTrackingId(), nil
@@ -590,7 +626,7 @@ func (cs *checkoutService) sendToPostProcessor(ctx context.Context, result *pb.O
 	startTime := time.Now()
 	select {
 	case cs.KafkaProducerClient.Input() <- &msg:
-		log.Infof("Message sent to Kafka: %v", msg)
+		log.WithContext(ctx).Infof("Message sent to Kafka: %v", msg)
 		select {
 		case successMsg := <-cs.KafkaProducerClient.Successes():
 			span.SetAttributes(
@@ -598,7 +634,7 @@ func (cs *checkoutService) sendToPostProcessor(ctx context.Context, result *pb.O
 				attribute.Int("messaging.kafka.producer.duration_ms", int(time.Since(startTime).Milliseconds())),
 				attribute.KeyValue(semconv.MessagingKafkaMessageOffset(int(successMsg.Offset))),
 			)
-			log.Infof("Successful to write message. offset: %v, duration: %v", successMsg.Offset, time.Since(startTime))
+			log.WithContext(ctx).Infof("Successful to write message. offset: %v, duration: %v", successMsg.Offset, time.Since(startTime))
 		case errMsg := <-cs.KafkaProducerClient.Errors():
 			span.SetAttributes(
 				attribute.Bool("messaging.kafka.producer.success", false),
@@ -626,14 +662,14 @@ func (cs *checkoutService) sendToPostProcessor(ctx context.Context, result *pb.O
 
 	ffValue := cs.getIntFeatureFlag(ctx, "kafkaQueueProblems")
 	if ffValue > 0 {
-		log.Infof("Warning: FeatureFlag 'kafkaQueueProblems' is activated, overloading queue now.")
+		log.WithContext(ctx).Infof("Warning: FeatureFlag 'kafkaQueueProblems' is activated, overloading queue now.")
 		for i := 0; i < ffValue; i++ {
 			go func(i int) {
 				cs.KafkaProducerClient.Input() <- &msg
 				_ = <-cs.KafkaProducerClient.Successes()
 			}(i)
 		}
-		log.Infof("Done with #%d messages for overload simulation.", ffValue)
+		log.WithContext(ctx).Infof("Done with #%d messages for overload simulation.", ffValue)
 	}
 }
 

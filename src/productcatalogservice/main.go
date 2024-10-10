@@ -9,6 +9,10 @@ package main
 import (
 	"context"
 	"fmt"
+	"go.opentelemetry.io/contrib/bridges/otellogrus"
+	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc"
+	"go.opentelemetry.io/otel/log/global"
+	sdklog "go.opentelemetry.io/otel/sdk/log"
 	"io/fs"
 	"net"
 	"os"
@@ -31,6 +35,7 @@ import (
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	sdkresource "go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	semconv "go.opentelemetry.io/otel/semconv/v1.24.0"
 	"go.opentelemetry.io/otel/trace"
 
 	otelhooks "github.com/open-feature/go-sdk-contrib/hooks/open-telemetry/pkg"
@@ -46,12 +51,37 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 )
 
+
+
+
 var (
 	log               *logrus.Logger
 	catalog           []*pb.Product
 	resource          *sdkresource.Resource
 	initResourcesOnce sync.Once
 )
+
+// contextHook is a custom Logrus hook that adds context information to log entries.
+type contextHook struct{}
+
+// Levels returns the log levels for which this hook is activated.
+func (h *contextHook) Levels() []logrus.Level {
+    return logrus.AllLevels
+}
+
+func (h *contextHook) Fire(entry *logrus.Entry) error {
+    if ctx, ok := entry.Data["context"].(context.Context); ok {
+        span := trace.SpanFromContext(ctx)
+        if span.SpanContext().IsValid() {
+            entry.Data["traceId"] = span.SpanContext().TraceID().String()
+            entry.Data["spanId"] = span.SpanContext().SpanID().String()
+			entry.Data["trace_id"] = span.SpanContext().TraceID().String()
+            entry.Data["span_id"] = span.SpanContext().SpanID().String()
+        }
+        // delete(entry.Data, "context") // Remove context from entry data to avoid logging it directly
+    }
+    return nil
+}
 
 func init() {
 	log = logrus.New()
@@ -112,7 +142,81 @@ func initMeterProvider() *sdkmetric.MeterProvider {
 	return mp
 }
 
+func newLoggerProvider(ctx context.Context, res *sdkresource.Resource) (*sdklog.LoggerProvider, error) {
+	// Create the OTLP gRPC exporter
+	exporter, err := otlploggrpc.New(ctx,
+		otlploggrpc.WithInsecure(),
+		otlploggrpc.WithEndpoint("otelcol:4317"), // Default gRPC endpoint
+		otlploggrpc.WithDialOption(grpc.WithTransportCredentials(insecure.NewCredentials())),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create OTLP gRPC log exporter: %v", err)
+	}
+
+	batcher := sdklog.NewBatchProcessor(exporter) //sdklog.WithExportTimeout(5*time.Second),
+	//sdklog.WithExportMaxBatchSize(10),
+
+	loggerProvider := sdklog.NewLoggerProvider(
+		sdklog.WithResource(res),
+		sdklog.WithProcessor(batcher),
+	)
+
+	return loggerProvider, nil
+}
+
+func getTraceContext(ctx context.Context) logrus.Fields {
+	span := trace.SpanFromContext(ctx)
+	return logrus.Fields{
+		"traceId": span.SpanContext().TraceID().String(),
+		"spanId":  span.SpanContext().SpanID().String(),
+	}
+}
+
 func main() {
+
+	// initiate and hook otellogrus
+	ctx := context.Background()
+
+	res, err := sdkresource.New(ctx,
+		sdkresource.WithAttributes(
+			semconv.ServiceNameKey.String("productcatalogservice"),
+			semconv.ServiceVersionKey.String("1.0.0"),
+		),
+	)
+	if err != nil {
+		fmt.Printf("failed to create resource: %v\n", err)
+		return
+	}
+
+	loggerProvider, err := newLoggerProvider(ctx, res)
+	if err != nil {
+		fmt.Printf("failed to create logger provider: %v\n", err)
+		return
+	}
+
+	// Ensure all logs are flushed before the program exits
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := loggerProvider.Shutdown(ctx); err != nil {
+			fmt.Printf("failed to shutdown LoggerProvider: %v\n", err)
+		}
+	}()
+
+	// Set the global LoggerProvider
+	global.SetLoggerProvider(loggerProvider)
+
+	// Create an *otellogrus.Hook and use it in your application.
+	hook := otellogrus.NewHook(
+		"log",
+		otellogrus.WithLoggerProvider(loggerProvider),
+		otellogrus.WithLevels(logrus.AllLevels),
+	)
+	// Set the newly created hook as a global logrus hook
+	log.AddHook(hook)
+
+	log.Infof("Initiated otel log exporting with logrus")
+
 	tp := initTracerProvider()
 	defer func() {
 		if err := tp.Shutdown(context.Background()); err != nil {
@@ -128,7 +232,7 @@ func main() {
 		}
 		log.Println("Shutdown meter provider")
 	}()
-	err := openfeature.SetProvider(flagd.NewProvider())
+	err = openfeature.SetProvider(flagd.NewProvider())
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -142,11 +246,11 @@ func main() {
 	var port string
 	mustMapEnv(&port, "PRODUCT_CATALOG_SERVICE_PORT")
 
-	log.Infof("ProductCatalogService gRPC server started on port: %s", port)
+	log.WithContext(ctx).Infof("ProductCatalogService gRPC server started on port: %s", port)
 
 	ln, err := net.Listen("tcp", fmt.Sprintf(":%s", port))
 	if err != nil {
-		log.Fatalf("TCP Listen: %v", err)
+		log.WithContext(ctx).Fatalf("TCP Listen: %v", err)
 	}
 
 	srv := grpc.NewServer(
@@ -163,14 +267,14 @@ func main() {
 
 	go func() {
 		if err := srv.Serve(ln); err != nil {
-			log.Fatalf("Failed to serve gRPC server, err: %v", err)
+			log.WithContext(ctx).Fatalf("Failed to serve gRPC server, err: %v", err)
 		}
 	}()
 
 	<-ctx.Done()
 
 	srv.GracefulStop()
-	log.Println("ProductCatalogService gRPC server stopped")
+	log.WithContext(ctx).Println("ProductCatalogService gRPC server stopped")
 }
 
 type productCatalog struct {
@@ -213,7 +317,7 @@ func readProductFiles() ([]*pb.Product, error) {
 		products = append(products, res.Products...)
 	}
 
-	log.Infof("Loaded %d products", len(products))
+	log.WithContext(context.Background()).Infof("Loaded %d products", len(products))
 
 	return products, nil
 }
@@ -251,10 +355,10 @@ func (p *productCatalog) GetProduct(ctx context.Context, req *pb.GetProductReque
 
 	// GetProduct will fail on a specific product when feature flag is enabled
 	if p.checkProductFailure(ctx, req.Id) {
-		msg := fmt.Sprintf("Error: ProductCatalogService Fail Feature Flag Enabled")
+		log.WithContext(ctx).Errorf("[Error]: ProductCatalogService Fail Feature Flag Enabled")
+		msg := fmt.Sprintf("[Error]: ProductCatalogService Fail Feature Flag Enabled")
 		span.SetStatus(otelcodes.Error, msg)
 		span.AddEvent(msg)
-		log.Error("Error: ProductCatalogService Fail Feature Flag Enabled")
 		return nil, status.Errorf(codes.Internal, msg)
 	}
 
@@ -267,12 +371,14 @@ func (p *productCatalog) GetProduct(ctx context.Context, req *pb.GetProductReque
 	}
 
 	if found == nil {
+		log.WithContext(ctx).Errorf("Product Not Found: %s", req.Id)
 		msg := fmt.Sprintf("Product Not Found: %s", req.Id)
 		span.SetStatus(otelcodes.Error, msg)
 		span.AddEvent(msg)
 		return nil, status.Errorf(codes.NotFound, msg)
 	}
 
+	log.WithContext(ctx).Infof("Product Found - ID: %s, Name: %s", req.Id, found.Name)
 	msg := fmt.Sprintf("Product Found - ID: %s, Name: %s", req.Id, found.Name)
 	span.AddEvent(msg)
 	span.SetAttributes(

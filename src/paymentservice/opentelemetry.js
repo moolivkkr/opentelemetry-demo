@@ -24,7 +24,8 @@ const { SemanticResourceAttributes } = require('@opentelemetry/semantic-conventi
 
 const otel_service_name = "paymentservice";
 const resource = new Resource({
-  ["service.name"]: otel_service_name
+  ["service.name"]: otel_service_name,
+  ["service_name"]: otel_service_name
 });
 const { WinstonInstrumentation } = require('@opentelemetry/instrumentation-winston');
 const { OpenTelemetryTransportV3 } = require('@opentelemetry/winston-transport');
