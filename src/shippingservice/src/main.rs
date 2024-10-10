@@ -12,15 +12,56 @@ use shipping_service::shop::shipping_service_server::ShippingServiceServer;
 use shipping_service::ShippingServer;
 
 mod telemetry;
-use telemetry::init_logger;
+// use telemetry::init_logger;
 
 use telemetry::init_reqwest_tracing;
 use telemetry::init_tracer;
 
+use opentelemetry::global;
+use opentelemetry::global::{logger_provider, shutdown_logger_provider, shutdown_tracer_provider};
+use opentelemetry::logs::LogError;
+use opentelemetry::trace::TraceError;
+use opentelemetry::{
+    metrics,
+    trace::{TraceContextExt, Tracer},
+    Key, KeyValue,
+};
+use opentelemetry_appender_log::OpenTelemetryLogBridge;
+use opentelemetry_otlp::{ExportConfig, WithExportConfig};
+use opentelemetry_sdk::logs::Config;
+use opentelemetry_sdk::{metrics::SdkMeterProvider, runtime, trace as sdktrace, Resource};
+
+fn init_logs() -> Result<opentelemetry_sdk::logs::Logger, LogError> {
+    let service_name = "shippingservice";
+    opentelemetry_otlp::new_pipeline()
+        .logging()
+        .with_log_config(
+            Config::default().with_resource(Resource::new(vec![KeyValue::new(
+                opentelemetry_semantic_conventions::resource::SERVICE_NAME,
+                service_name,
+            )])),
+        )
+        .with_exporter(
+            opentelemetry_otlp::new_exporter()
+                .tonic()
+                .with_endpoint("http://localhost:4318"),
+        )
+        .install_batch(runtime::Tokio)
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    init_logger()?;
+    // let _ = init_logs();
+    // let logger_provider = opentelemetry::global::logger_provider();
+    let _ = init_logs();
 
+    // Retrieve the global LoggerProvider.
+    let logger_provider = logger_provider();
+
+    // Create a new OpenTelemetryLogBridge using the above LoggerProvider.
+    let otel_log_appender = OpenTelemetryLogBridge::new(&logger_provider);
+    log::set_boxed_logger(Box::new(otel_log_appender)).unwrap();
+    log::set_max_level(Level::Info.to_level_filter());
     let (mut health_reporter, health_service) = tonic_health::server::health_reporter();
     health_reporter
         .set_serving::<ShippingServiceServer<ShippingServer>>()
@@ -40,5 +81,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .serve(addr)
         .await?;
 
+    shutdown_logger_provider();
     Ok(())
 }
