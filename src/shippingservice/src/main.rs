@@ -53,6 +53,12 @@ fn init_logs() -> Result<opentelemetry_sdk::logs::Logger, LogError> {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // let _ = init_logs();
     // let logger_provider = opentelemetry::global::logger_provider();
+    let (mut health_reporter, health_service) = tonic_health::server::health_reporter();
+    health_reporter
+        .set_serving::<ShippingServiceServer<ShippingServer>>()
+        .await;
+
+    init_reqwest_tracing(init_tracer()?)?;
     let _ = init_logs();
 
     // Retrieve the global LoggerProvider.
@@ -62,12 +68,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let otel_log_appender = OpenTelemetryLogBridge::new(&logger_provider);
     log::set_boxed_logger(Box::new(otel_log_appender)).unwrap();
     log::set_max_level(Level::Info.to_level_filter());
-    let (mut health_reporter, health_service) = tonic_health::server::health_reporter();
-    health_reporter
-        .set_serving::<ShippingServiceServer<ShippingServer>>()
-        .await;
-
-    init_reqwest_tracing(init_tracer()?)?;
 
     info!("OTel pipeline created");
     let port = env::var("SHIPPING_SERVICE_PORT").expect("$SHIPPING_SERVICE_PORT is not set");
