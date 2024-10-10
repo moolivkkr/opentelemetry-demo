@@ -19,12 +19,13 @@ use telemetry::init_tracer;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    init_logger()?;
+
     let (mut health_reporter, health_service) = tonic_health::server::health_reporter();
     health_reporter
         .set_serving::<ShippingServiceServer<ShippingServer>>()
         .await;
 
-    init_logger()?;
     init_reqwest_tracing(init_tracer()?)?;
 
     info!("OTel pipeline created");
