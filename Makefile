@@ -88,6 +88,10 @@ build-and-push-dockerhub:
 build-and-push-ghcr:
 	$(DOCKER_COMPOSE_CMD) --env-file .ghcr.env -f docker-compose.yml build
 	$(DOCKER_COMPOSE_CMD) --env-file .ghcr.env -f docker-compose.yml push
+.PHONY: push-ghcr
+push-ghcr:		
+	$(DOCKER_COMPOSE_CMD) --env-file .ghcr.env -f docker-compose.yml push
+
 
 .PHONY: build-env-file
 build-env-file:
@@ -97,6 +101,8 @@ build-env-file:
 	cp .env .ghcr.env
 	sed -i '/IMAGE_VERSION=.*/c\IMAGE_VERSION=${RELEASE_VERSION}' .ghcr.env
 	sed -i '/IMAGE_NAME=.*/c\IMAGE_NAME=${GHCR_REPO}' .ghcr.env
+
+	
 
 .PHONY: run-tests
 run-tests:
