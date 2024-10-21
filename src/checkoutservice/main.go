@@ -380,6 +380,7 @@ func (cs *checkoutService) PlaceOrder(ctx context.Context, req *pb.PlaceOrderReq
 
 	txID, err := cs.chargeCard(ctx, total, req.CreditCard)
 	if err != nil {
+		log.WithContext(ctx).Error("[Error]: failed to charge card")
 		return nil, status.Errorf(codes.Internal, "failed to charge card: %+v", err)
 	}
 	log.WithContext(ctx).Infof("payment went through (transaction_id: %s)", txID)
@@ -526,12 +527,12 @@ func (cs *checkoutService) prepOrderItems(ctx context.Context, items []*pb.CartI
 	for i, item := range items {
 		product, err := cs.productCatalogSvcClient.GetProduct(ctx, &pb.GetProductRequest{Id: item.GetProductId()})
 		if err != nil {
-			log.WithContext(ctx).Errorf("failed to get product #%q", item.GetProductId())
+			log.WithContext(ctx).Errorf("[Error]: failed to get product #%q", item.GetProductId())
 			return nil, fmt.Errorf("failed to get product #%q", item.GetProductId())
 		}
 		price, err := cs.convertCurrency(ctx, product.GetPriceUsd(), userCurrency)
 		if err != nil {
-			log.WithContext(ctx).Errorf("failed to convert price of %q to %s", item.GetProductId(), userCurrency)
+			log.WithContext(ctx).Errorf("Error]: failed to convert price of %q to %s", item.GetProductId(), userCurrency)
 			return nil, fmt.Errorf("failed to convert price of %q to %s", item.GetProductId(), userCurrency)
 		}
 		out[i] = &pb.OrderItem{
@@ -565,7 +566,7 @@ func (cs *checkoutService) chargeCard(ctx context.Context, amount *pb.Money, pay
 		Amount:     amount,
 		CreditCard: paymentInfo})
 	if err != nil {
-		log.WithContext(ctx).Errorf("could not charge the card: %+v", err)
+		log.WithContext(ctx).Errorf("Error]: could not charge the card: %+v", err)
 		return "", fmt.Errorf("could not charge the card: %+v", err)
 	}
 	return paymentResp.GetTransactionId(), nil
