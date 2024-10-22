@@ -26,8 +26,6 @@ spec:
         env:
           - name: discovery.type
             value: "single-node"
-          - name: OPENSEARCH_JAVA_OPTS
-            value: "-Xms2g -Xmx2g"
           - name: OPENSEARCH_INITIAL_ADMIN_PASSWORD
             value: ${AWS_OPENSEARCH_PASSWORD}
         volumeMounts:
@@ -785,10 +783,10 @@ data:
         bounded_blocking:
       sink:
         - opensearch:
-            hosts: ["opensearch:9200"]
+            hosts: ["https://opensearch-service:9200"]
             username: "admin"
             password: "MyPassw0rd123#"
-            insecure: false
+            insecure: true
             index_type: custom
             index: otel-events-%{yyyy.MM.dd}
             bulk_size: 4
@@ -812,10 +810,10 @@ data:
         - otel_trace_raw:
       sink:
         - opensearch:
-            hosts: ["opensearch:9200"]
+            hosts: ["https://opensearch-service:9200"]
             username: "admin"
             password: "MyPassw0rd123#"
-            insecure: false        
+            insecure: true        
             index_type: custom
             index: otel-traces-%{yyyy.MM.dd}
             bulk_size: 4
@@ -829,10 +827,10 @@ data:
         - service_map_stateful:
       sink:
         - opensearch:
-            hosts: ["opensearch:9200"]
+            hosts: ["https://opensearch-service:9200"]
             username: "admin"
             password: "MyPassw0rd123#"
-            insecure: false
+            insecure: true
             index_type: trace-analytics-service-map
           
     otel-metrics-pipeline:
@@ -854,10 +852,10 @@ data:
             flatten_attributes: false
       sink:
         - opensearch:
-            hosts: ["open-search:9200"]
+            hosts: ["https://opensearch-service:9200"]
             username: "admin"
             password: "MyPassw0rd123#"
-            insecure: false
+            insecure: true
             index_type: custom
             index: ss4o_metrics-otel-%{yyyy.MM.dd}
             bulk_size: 4
