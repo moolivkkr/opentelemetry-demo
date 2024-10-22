@@ -293,7 +293,7 @@ data:
             - job_name: 'otelcol'
               scrape_interval: 10s
               static_configs:
-                - targets: ['otelcol:8888']
+                - targets: ['localhost:8888']
 
     exporters:
       debug: {}
@@ -371,19 +371,22 @@ data:
       spanmetrics: {}
 
     service:
+      telemetry:
+        logs:
+          level: "DEBUG"
       extensions: [basicauth/client]
       pipelines:
         traces:
           receivers: [otlp]
-          processors: [k8sattributes, transform/spans, batch]
+          processors: [ transform/spans, batch]
           exporters: [otlp, debug, spanmetrics, otlp/traces]
         metrics:
-          receivers: [httpcheck/frontendproxy, otlp, prometheus, redis, spanmetrics]
-          processors: [k8sattributes, filter/ottl, transform/metrics, batch]
+          receivers: [ otlp, spanmetrics]
+          processors: [ filter/ottl, transform/metrics, batch]
           exporters: [otlp/metrics, debug]
         logs:
           receivers: [otlp]
-          processors: [k8sattributes, batch]
+          processors: [ batch]
           exporters: [otlp/logs, debug]
 ---
 # Source: opentelemetry-demo/charts/prometheus/templates/cm.yaml
@@ -9292,9 +9295,9 @@ spec:
       securityContext:
         {}
       initContainers:
-      - name: wait-for-data-prepper
-        image: busybox
-        command: ['sh', '-c', 'until nc -z data-prepper 21891; do echo waiting for data-prepper; sleep 2; done;']
+      # - name: wait-for-data-prepper
+      #   image: busybox
+      #   command: ['sh', '-c', 'until nc -z data-prepper 21891; do echo waiting for data-prepper; sleep 2; done;']
       containers:
         - name: opentelemetry-collector
           args:
@@ -9336,17 +9339,21 @@ spec:
                   apiVersion: v1
                   fieldPath: status.podIP
             - name: GOMEMLIMIT
-              value: "512MiB"
-          livenessProbe:
-            httpGet:
-              path: /
-              port: 13133
-          readinessProbe:
-            httpGet:
-              path: /
-              port: 13133
+              value: "1024MiB"
+          # livenessProbe:
+          #   httpGet:
+          #     path: /
+          #     port: 13133
+          #   initialDelaySeconds: 120
+          # readinessProbe:
+          #   httpGet:
+          #     path: /
+          #     port: 13133
+          #   initialDelaySeconds: 120
           resources:
             limits:
+              memory: 2Gi
+            requests:
               memory: 512Mi
           volumeMounts:
             - mountPath: /conf
@@ -9617,10 +9624,10 @@ spec:
         app.kubernetes.io/name: cartservice
     spec:
       serviceAccountName: otel-demo
-      initContainers:
-      - name: wait-for-otelcol
-        image: busybox
-        command: ['sh', '-c', 'until nc -z otelcol 4317; do echo waiting for otelcol; sleep 2; done;']
+      # initContainers:
+      # - name: wait-for-otelcol
+      #   image: busybox
+      #   command: ['sh', '-c', 'until nc -z otelcol 4317; do echo waiting for otelcol; sleep 2; done;']
       containers:
         - name: cartservice
           image: 'ghcr.io/open-telemetry/demo:1.11.1-cartservice'
@@ -9699,10 +9706,10 @@ spec:
         app.kubernetes.io/name: checkoutservice
     spec:
       serviceAccountName: opentelemetry-demo
-      initContainers:
-      - name: wait-for-otelcol
-        image: busybox
-        command: ['sh', '-c', 'until nc -z otelcol 4317; do echo waiting for otelcol; sleep 2; done;']
+      # initContainers:
+      # - name: wait-for-otelcol
+      #   image: busybox
+      #   command: ['sh', '-c', 'until nc -z otelcol 4317; do echo waiting for otelcol; sleep 2; done;']
       containers:
         - name: checkoutservice
           image: 'ghcr.io/open-telemetry/demo:1.11.1-checkoutservice'
@@ -10416,7 +10423,9 @@ spec:
             value: service.name=$(OTEL_SERVICE_NAME),service.namespace=opentelemetry-demo,service.version=1.11.1
           resources:
             limits:
-              memory: 1Gi
+              memory: 2Gi
+            requests:
+              memory: 500Mi
           volumeMounts:
       volumes:
 ---
@@ -10520,10 +10529,10 @@ spec:
         app.kubernetes.io/name: productcatalogservice
     spec:
       serviceAccountName: opentelemetry-demo
-      initContainers:
-      - name: wait-for-otelcol
-        image: busybox
-        command: ['sh', '-c', 'until nc -z otelcol 4317; do echo waiting for otelcol; sleep 2; done;']
+      # initContainers:
+      # - name: wait-for-otelcol
+      #   image: busybox
+      #   command: ['sh', '-c', 'until nc -z otelcol 4317; do echo waiting for otelcol; sleep 2; done;']
       containers:
         - name: productcatalogservice
           image: 'ghcr.io/open-telemetry/demo:1.11.1-productcatalogservice'
@@ -10554,7 +10563,9 @@ spec:
             value: service.name=$(OTEL_SERVICE_NAME),service.namespace=opentelemetry-demo,service.version=1.11.1
           resources:
             limits:
-              memory: 20Mi
+              memory: 1024Mi
+            requests:
+              memory: 256Mi
           volumeMounts:
       volumes:
 ---
@@ -10966,58 +10977,52 @@ spec:
 #         - name: config-emptydir
 #           mountPath: /usr/share/opensearch/config/opensearch.yml
 #           subPath: opensearch.yml
-apiVersion: apps/v1
-kind: StatefulSet
-metadata:
-  name: opensearch
-  namespace: otel-demo  # Ensure this matches the namespace used in opentelemetry-demo.yaml
-spec:
-  serviceName: "opensearch-headless"
-  replicas: 1
-  selector:
-    matchLabels:
-      app: opensearch
-  template:
-    metadata:
-      labels:
-        app: opensearch
-    spec:
-      containers:
-      - name: opensearch
-        image: ${OPENSEARCH_IMAGE}
-        resources:
-          requests:
-            memory: "2Gi"
-            cpu: "500m"
-          limits:
-            memory: "4Gi"
-            cpu: "1000m"
-        env:
-          - name: discovery.type
-            value: "single-node"
-          - name: OPENSEARCH_INITIAL_ADMIN_PASSWORD
-            value: ${AWS_OPENSEARCH_PASSWORD}
-        volumeMounts:
-          - mountPath: /usr/share/opensearch/data
-            name: opensearch-data
-        ports:
-          - containerPort: ${OPENSEARCH_PORT}
-  volumeClaimTemplates:
-  - metadata:
-      name: opensearch-data
-    spec:
-      accessModes: ["ReadWriteOnce"]
-      resources:
-        requests:
-          storage: 40Gi
----
+# ---
+# apiVersion: storage.k8s.io/v1
+# kind: StorageClass
+# metadata:
+#   name: local-storage
+# provisioner: kubernetes.io/no-provisioner
+# volumeBindingMode: WaitForFirstConsumer
+# ---
+
+# apiVersion: v1
+# kind: PersistentVolume
+# metadata:
+#   name: opensearch-pv
+# spec:
+#   capacity:
+#     storage: 40Gi
+#   accessModes:
+#     - ReadWriteOnce
+#   hostPath:
+#     path: "/tmp/data/opensearch"
+#   persistentVolumeReclaimPolicy: Retain
+#   storageClassName: manual
+
+# ---
+# apiVersion: v1
+# kind: PersistentVolumeClaim
+# metadata:
+#   name: opensearch-data
+#   namespace: otel-demo
+# spec:
+#   accessModes:
+#     - ReadWriteOnce
+#   resources:
+#     requests:
+#       storage: 40Gi
+#   storageClassName: manual
+
+# ---
 
 # apiVersion: apps/v1
-# kind: Deployment
+# kind: StatefulSet
 # metadata:
 #   name: opensearch
 #   namespace: otel-demo  # Ensure this matches the namespace used in opentelemetry-demo.yaml
 # spec:
+#   serviceName: "opensearch-headless"
 #   replicas: 1
 #   selector:
 #     matchLabels:
@@ -11036,21 +11041,66 @@ spec:
 #             cpu: "500m"
 #           limits:
 #             memory: "4Gi"
-#             cpu: "1"
+#             cpu: "1000m"
 #         env:
 #           - name: discovery.type
 #             value: "single-node"
 #           - name: OPENSEARCH_INITIAL_ADMIN_PASSWORD
 #             value: ${AWS_OPENSEARCH_PASSWORD}
 #         volumeMounts:
-#           - mountPath: /var/lib/opensearch/data
+#           - mountPath: /usr/share/opensearch/data
 #             name: opensearch-data
 #         ports:
 #           - containerPort: ${OPENSEARCH_PORT}
-#       volumes:
-#         - name: opensearch-data
-#           hostPath:
-#             path: /tmp/data/opensearch
+#   volumeClaimTemplates:
+#   - metadata:
+#       name: opensearch-data
+#     spec:
+#       accessModes: ["ReadWriteOnce"]
+#       resources:
+#         requests:
+#           storage: 40Gi
+#       storageClassName: manual
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: opensearch
+  namespace: otel-demo  # Ensure this matches the namespace used in opentelemetry-demo.yaml
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: opensearch
+  template:
+    metadata:
+      labels:
+        app: opensearch
+    spec:
+      containers:
+      - name: opensearch
+        image: ${OPENSEARCH_IMAGE}
+        resources:
+          requests:
+            memory: "2Gi"
+            cpu: "500m"
+          limits:
+            memory: "4Gi"
+            cpu: "1"
+        env:
+          - name: discovery.type
+            value: "single-node"
+          - name: OPENSEARCH_INITIAL_ADMIN_PASSWORD
+            value: ${AWS_OPENSEARCH_PASSWORD}
+        volumeMounts:
+          - mountPath: /var/lib/opensearch/data
+            name: opensearch-data
+        ports:
+          - containerPort: ${OPENSEARCH_PORT}
+      volumes:
+        - name: opensearch-data
+          emptyDir: {}
 ---
 apiVersion: v1
 kind: Service

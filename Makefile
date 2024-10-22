@@ -93,11 +93,14 @@ push-ghcr:
 	$(DOCKER_COMPOSE_CMD) --env-file .ghcr.env -f docker-compose.yml push
 
 
-.PHONY: build-env-file
-build-env-file:
+.PHONY: build-env-file-docker
+build-env-file-docker:
 	cp .env .dockerhub.env
 	sed -i '/IMAGE_VERSION=.*/c\IMAGE_VERSION=${RELEASE_VERSION}' .dockerhub.env
 	sed -i '/IMAGE_NAME=.*/c\IMAGE_NAME=${DOCKERHUB_REPO}' .dockerhub.env
+.PHONY: build-env-file-ghcr
+
+build-env-file-ghcr:
 	cp .env .ghcr.env
 	sed -i '/IMAGE_VERSION=.*/c\IMAGE_VERSION=${RELEASE_VERSION}' .ghcr.env
 	sed -i '/IMAGE_NAME=.*/c\IMAGE_NAME=${GHCR_REPO}' .ghcr.env
