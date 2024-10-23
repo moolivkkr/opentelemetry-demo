@@ -508,7 +508,7 @@ data:
       },
       "composed_of": [],
       "version": 1
-      }
+    }
   ss4o_traces.json: |
     {
       "index_patterns": [

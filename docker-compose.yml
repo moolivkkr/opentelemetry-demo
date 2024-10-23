@@ -23,7 +23,7 @@ services:
   # ******************
   # Accounting service
   accountingservice:
-    image: ${IMAGE_NAME}/${IMAGE_VERSION}-accountingservice
+    image: ${IMAGE_NAME}/accountingservice:${IMAGE_VERSION}
     container_name: accounting-service
     build:
       context: ./
@@ -50,7 +50,7 @@ services:
 
   # AdService
   adservice:
-    image: ${IMAGE_NAME}/${IMAGE_VERSION}-adservice
+    image: ${IMAGE_NAME}/adservice:${IMAGE_VERSION}
     container_name: ad-service
     build:
       context: ./
@@ -82,7 +82,7 @@ services:
 
   # Cart service
   cartservice:
-    image: ${IMAGE_NAME}/${IMAGE_VERSION}-cartservice
+    image: ${IMAGE_NAME}/cartservice:${IMAGE_VERSION}
     container_name: cart-service
     build:
       context: ./
@@ -116,7 +116,7 @@ services:
 
   # Checkout service
   checkoutservice:
-    image: ${IMAGE_NAME}/${IMAGE_VERSION}-checkoutservice
+    image: ${IMAGE_NAME}/checkoutservice:${IMAGE_VERSION}
     container_name: checkout-service
     build:
       context: ./
@@ -168,7 +168,7 @@ services:
 
   # Currency service
   currencyservice:
-    image: ${IMAGE_NAME}/${IMAGE_VERSION}-currencyservice
+    image: ${IMAGE_NAME}/currencyservice:${IMAGE_VERSION}
     container_name: currency-service
     build:
       context: ./
@@ -194,7 +194,7 @@ services:
 
   # Email service
   emailservice:
-    image: ${IMAGE_NAME}/${IMAGE_VERSION}-emailservice
+    image: ${IMAGE_NAME}/emailservice:${IMAGE_VERSION}
     container_name: email-service
     build:
       context: ./
@@ -221,7 +221,7 @@ services:
 
   # Fraud Detection service
   frauddetectionservice:
-    image: ${IMAGE_NAME}/${IMAGE_VERSION}-frauddetectionservice
+    image: ${IMAGE_NAME}/frauddetectionservice:${IMAGE_VERSION}
     container_name: frauddetection-service
     build:
       context: ./
@@ -252,7 +252,7 @@ services:
 
   # Frontend
   frontend:
-    image: ${IMAGE_NAME}/${IMAGE_VERSION}-frontend
+    image: ${IMAGE_NAME}/frontend:${IMAGE_VERSION}
     container_name: frontend
     build:
       context: ./
@@ -313,7 +313,7 @@ services:
 
   # Frontend Proxy (Envoy)
   frontendproxy:
-    image: ${IMAGE_NAME}/${IMAGE_VERSION}-frontendproxy
+    image: ${IMAGE_NAME}/frontendproxy:${IMAGE_VERSION}
     container_name: frontend-proxy
     build:
       context: ./
@@ -358,7 +358,7 @@ services:
 
   # Imageprovider
   imageprovider:
-    image: ${IMAGE_NAME}/${IMAGE_VERSION}-imageprovider
+    image: ${IMAGE_NAME}/imageprovider:${IMAGE_VERSION}
     container_name: imageprovider
     build:
       context: ./
@@ -385,7 +385,7 @@ services:
 
   # Load Generator
   loadgenerator:
-    image: ${IMAGE_NAME}/${IMAGE_VERSION}-loadgenerator
+    image: ${IMAGE_NAME}/loadgenerator:${IMAGE_VERSION}
     container_name: load-generator
     build:
       context: ./
@@ -423,7 +423,7 @@ services:
 
   # Payment service
   paymentservice:
-    image: ${IMAGE_NAME}/${IMAGE_VERSION}-paymentservice
+    image: ${IMAGE_NAME}/paymentservice:${IMAGE_VERSION}
     container_name: payment-service
     build:
       context: ./
@@ -454,7 +454,7 @@ services:
 
   # Product Catalog service
   productcatalogservice:
-    image: ${IMAGE_NAME}/${IMAGE_VERSION}-productcatalogservice
+    image: ${IMAGE_NAME}/productcatalogservice:${IMAGE_VERSION}
     container_name: product-catalog-service
     build:
       context: ./
@@ -485,7 +485,7 @@ services:
 
   # Quote service
   quoteservice:
-    image: ${IMAGE_NAME}/${IMAGE_VERSION}-quoteservice
+    image: ${IMAGE_NAME}/quoteservice:${IMAGE_VERSION}
     container_name: quote-service
     build:
       context: ./
@@ -513,7 +513,7 @@ services:
 
   # Recommendation service
   recommendationservice:
-    image: ${IMAGE_NAME}/${IMAGE_VERSION}-recommendationservice
+    image: ${IMAGE_NAME}/recommendationservice:${IMAGE_VERSION}
     container_name: recommendation-service
     build:
       context: ./
@@ -549,7 +549,7 @@ services:
 
   # Shipping service
   shippingservice:
-    image: ${IMAGE_NAME}/${IMAGE_VERSION}-shippingservice
+    image: ${IMAGE_NAME}/shippingservice:${IMAGE_VERSION}
     container_name: shipping-service
     build:
       context: ./
@@ -605,7 +605,7 @@ services:
 
   # Kafka used by Checkout, Accounting, and Fraud Detection services
   kafka:
-    image: ${IMAGE_NAME}/${IMAGE_VERSION}-kafka
+    image: ${IMAGE_NAME}/kafka:${RELEASE_VERSION}
     container_name: kafka
     build:
       context: ./

@@ -82,9 +82,9 @@ data:
       otlp:
         protocols:
           grpc:
-            endpoint: otelcol:4317
+            endpoint: localhost:4317
           http:
-            endpoint: otelcol:4318
+            endpoint: localhost:4318
             cors:
               allowed_origins:
                 - "http://*"

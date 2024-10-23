@@ -1,0 +1,127 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: opentelemetry-collector-config
+  namespace: otel-demo
+data:
+  opentelemetry-collector-config.yaml: |
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+          http:
+      k8s_events:
+        auth_type: serviceAccount
+      k8s_cluster:
+        auth_type: serviceAccount
+    processors:
+      batch:
+    exporters:
+      debug:        
+      otlp:
+        endpoint: "otelcol:4317"
+        tls:
+          insecure: true
+    service:
+      pipelines:
+        traces:
+          receivers: [otlp]
+          processors: [batch]
+          exporters: [otlp]
+        metrics:
+          receivers: [otlp, k8s_cluster]
+          processors: [batch]
+          exporters: [otlp]
+        logs:
+          receivers: [k8s_events]
+          processors: [batch]
+          exporters: [ otlp]
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: opentelemetry-agent
+  namespace: otel-demo
+  labels:
+    app: opentelemetry-agent
+spec:
+  selector:
+    matchLabels:
+      app: opentelemetry-agent
+  template:
+    metadata:
+      labels:
+        app: opentelemetry-agent
+    spec:
+      serviceAccountName: opentelemetry-agent-sa
+      containers:
+      - name: opentelemetry-agent
+        image: otel/opentelemetry-collector-contrib:latest
+        resources:
+          limits:
+            memory: 1Gi
+            cpu: "500m"
+          requests:
+            memory: 500Mi
+            cpu: "250m"
+        ports:
+        - containerPort: 4317
+        - containerPort: 55680
+        - containerPort: 8888
+        volumeMounts:
+        - name: config-volume
+          mountPath: /conf
+        - name: host-filesystem
+          mountPath: /host
+        args: ["--config=/conf/opentelemetry-collector-config.yaml"]
+      volumes:
+      - name: config-volume
+        configMap:
+          name: opentelemetry-collector-config
+      - name: host-filesystem
+        hostPath:
+          path: /
+          type: Directory
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: opentelemetry-agent-sa
+  namespace: otel-demo
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: opentelemetry-agent-clusterrole
+rules:
+- apiGroups: [""]
+  resources: ["events", "nodes", "pods", "namespaces", "replicationcontrollers", "resourcequotas", "services"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["batch"]
+  resources: ["jobs", "cronjobs"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["apps"]
+  resources: ["deployments", "replicasets", "statefulsets", "daemonsets"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["metrics.k8s.io"]
+  resources: ["pods", "nodes"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["autoscaling"]
+  resources: ["horizontalpodautoscalers"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["extensions"]
+  resources: ["replicasets", "deployments"]
+  verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: opentelemetry-agent-clusterrolebinding
+subjects:
+- kind: ServiceAccount
+  name: opentelemetry-agent-sa
+  namespace: otel-demo
+roleRef:
+  kind: ClusterRole
+  name: opentelemetry-agent-clusterrole
+  apiGroup: rbac.authorization.k8s.io
