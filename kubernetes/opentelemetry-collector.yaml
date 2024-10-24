@@ -1,0 +1,360 @@
+# Source: opentelemetry-demo/charts/opentelemetry-collector/templates/serviceaccount.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: otelcol
+  namespace: otel-demo
+  labels:
+    app.kubernetes.io/name: otelcol
+    app.kubernetes.io/instance: otel-demo
+    app.kubernetes.io/version: "0.108.0"
+---
+# Source: opentelemetry-demo/charts/opentelemetry-collector/templates/configmap.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: otelcol
+  namespace: otel-demo
+  labels:
+    app.kubernetes.io/name: otelcol
+    app.kubernetes.io/instance: otel-demo
+    app.kubernetes.io/version: "0.108.0"
+    
+data:
+  relay: |
+    extensions:
+      basicauth/client:
+        client_auth:
+          username: admin
+          password: MyPassw0rd123#
+
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+          http:
+            endpoint: 0.0.0.0:4318
+            cors:
+              allowed_origins:
+                - "http://*"
+                - "https://*"
+      httpcheck/frontendproxy:
+        targets:
+          - endpoint: http://frontendproxy:${env:ENVOY_PORT}
+      redis:
+        endpoint: "valkey-cart:6379"
+        username: "valkey"
+        collection_interval: 10s
+      prometheus:
+        config:
+          scrape_configs:
+            - job_name: 'otelcol'
+              scrape_interval: 10s
+              static_configs:
+                - targets: ['localhost:8888']
+
+    exporters:
+      debug:
+        verbosity: basic
+      otlp/openobserve:
+        endpoint: openobserve:5081
+        headers:
+          Authorization: "Basic YWRtaW5Ab3BlbnRlbGVtZXRyeS1kZW1vLmNvbTpNeVBhc3N3MHJkMTIzIw=="
+          organization: default
+          stream-name: default
+        tls:
+          insecure: true
+      otlp/traces:
+        endpoint: "data-prepper:21890"
+        tls:
+          insecure: true
+          insecure_skip_verify: true
+      otlp/metrics:
+        endpoint: "data-prepper:21891"
+        tls:
+          insecure: true
+          insecure_skip_verify: true
+      otlp/logs:
+        endpoint: "data-prepper:21892"
+        tls:
+          insecure: true
+          insecure_skip_verify: true
+
+    processors:
+      batch:       
+      k8sattributes:
+        extract:
+          metadata:
+            - k8s.namespace.name
+            - k8s.deployment.name
+            - k8s.statefulset.name
+            - k8s.daemonset.name
+            - k8s.cronjob.name
+            - k8s.job.name
+            - k8s.node.name
+            - k8s.pod.name
+            - k8s.pod.uid
+            - k8s.pod.start_time
+        passthrough: false
+        pod_association:
+          - sources:
+              - from: resource_attribute
+                name: k8s.pod.ip
+          - sources:
+              - from: resource_attribute
+                name: k8s.pod.uid
+          - sources:
+              - from: connection
+      memory_limiter:
+        check_interval: 5s
+        limit_percentage: 80
+        spike_limit_percentage: 25
+
+      filter/ottl:
+        error_mode: ignore
+        metrics:
+          metric:
+            - 'name == "rpc.server.duration"'
+      transform/metrics:
+        metric_statements:
+          - context: metric
+            statements:
+              - set(description, "") where name == "queueSize"
+              - set(description, "") where name == "http.client.duration"
+      transform/spans:
+        error_mode: ignore
+        trace_statements:
+          - context: span
+            statements:
+              - replace_pattern(name, "\\?.*", "")
+              - replace_match(name, "GET /api/products/*", "GET /api/products/{productId}")
+
+    connectors:
+      spanmetrics: {}
+
+    service:
+      # telemetry:
+      #   logs:
+      #     level: "DEBUG"
+      extensions: [basicauth/client]
+      pipelines:
+        traces:
+          receivers: [otlp]
+          processors: [k8sattributes, transform/spans, batch]
+          exporters: [debug, spanmetrics, otlp/traces, otlp/openobserve]
+        metrics:
+          receivers: [ otlp, spanmetrics]
+          processors: [ k8sattributes,filter/ottl, transform/metrics,  batch]
+          exporters: [otlp/metrics, otlp/openobserve, debug]
+        logs:
+          receivers: [otlp]
+          processors: [k8sattributes, batch]
+          exporters: [otlp/logs, otlp/openobserve, debug]
+---
+# Source: opentelemetry-demo/charts/opentelemetry-collector/templates/clusterrole.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: otelcol
+  labels:
+    app.kubernetes.io/name: otelcol
+    app.kubernetes.io/instance: otel-demo
+    app.kubernetes.io/version: "0.108.0"
+    
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "namespaces"]
+    verbs: ["get", "watch", "list"]
+  - apiGroups: ["apps"]
+    resources: ["replicasets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["extensions"]
+    resources: ["replicasets"]
+    verbs: ["get", "list", "watch"]
+---
+# Source: opentelemetry-demo/charts/opentelemetry-collector/templates/clusterrolebinding.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: otelcol
+  labels:
+    app.kubernetes.io/name: otelcol
+    app.kubernetes.io/instance: otel-demo
+    app.kubernetes.io/version: "0.108.0"
+    
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: otelcol
+subjects:
+- kind: ServiceAccount
+  name: otelcol
+  namespace: otel-demo
+---
+# Source: opentelemetry-demo/charts/opentelemetry-collector/templates/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: otelcol
+  namespace: otel-demo
+  labels:
+    app.kubernetes.io/name: otelcol
+    app.kubernetes.io/instance: otel-demo
+    app.kubernetes.io/version: "0.108.0"
+    
+    component: standalone-collector
+spec:
+  type: ClusterIP
+  ports:
+    
+    - name: jaeger-compact
+      port: 6831
+      targetPort: 6831
+      protocol: UDP
+    - name: jaeger-grpc
+      port: 14250
+      targetPort: 14250
+      protocol: TCP
+    - name: jaeger-thrift
+      port: 14268
+      targetPort: 14268
+      protocol: TCP
+    - name: metrics
+      port: 8888
+      targetPort: 8888
+      protocol: TCP
+    - name: otlp
+      port: 4317
+      targetPort: 4317
+      protocol: TCP
+      appProtocol: grpc
+    - name: otlp-http
+      port: 4318
+      targetPort: 4318
+      protocol: TCP
+    - name: prometheus
+      port: 9464
+      targetPort: 9464
+      protocol: TCP
+    - name: zipkin
+      port: 9411
+      targetPort: 9411
+      protocol: TCP
+  selector:
+    app.kubernetes.io/name: otelcol
+    app.kubernetes.io/instance: otel-demo
+    component: standalone-collector
+  internalTrafficPolicy: Cluster
+---
+# Source: opentelemetry-demo/charts/opentelemetry-collector/templates/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: otelcol
+  namespace: otel-demo
+  labels:
+    app.kubernetes.io/name: otelcol
+    app.kubernetes.io/instance: otel-demo
+    app.kubernetes.io/version: "0.108.0"
+    
+spec:
+  replicas: 1
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: otelcol
+      app.kubernetes.io/instance: otel-demo
+      component: standalone-collector
+  strategy:
+    type: RollingUpdate
+  template:
+    metadata:
+      annotations:
+        checksum/config: 14c2aaf8b8d3ccaa7f8d464e20e9d8680d47d6a16394b3019a346bef56de2947
+        opentelemetry_community_demo: "true"
+        prometheus.io/port: "9464"
+        prometheus.io/scrape: "true"
+      labels:
+        app.kubernetes.io/name: otelcol
+        app.kubernetes.io/instance: otel-demo
+        component: standalone-collector
+        
+    spec:
+      
+      serviceAccountName: otelcol
+      securityContext:
+        {}
+      initContainers:
+      # - name: wait-for-data-prepper
+      #   image: busybox
+      #   command: ['sh', '-c', 'until nc -z data-prepper 21891; do echo waiting for data-prepper; sleep 2; done;']
+      containers:
+        - name: opentelemetry-collector
+          args:
+            - --config=/conf/relay.yaml
+          securityContext:
+            {}
+          image: "otel/opentelemetry-collector-contrib:0.108.0"
+          imagePullPolicy: ${IMAGE_PULL_POLICY}
+          ports:
+            
+            - name: jaeger-compact
+              containerPort: 6831
+              protocol: UDP
+            - name: jaeger-grpc
+              containerPort: 14250
+              protocol: TCP
+            - name: jaeger-thrift
+              containerPort: 14268
+              protocol: TCP
+            - name: metrics
+              containerPort: 8888
+              protocol: TCP
+            - name: otlp
+              containerPort: 4317
+              protocol: TCP
+            - name: otlp-http
+              containerPort: 4318
+              protocol: TCP
+            - name: prometheus
+              containerPort: 9464
+              protocol: TCP
+            - name: zipkin
+              containerPort: 9411
+              protocol: TCP
+          env:
+            - name: MY_POD_IP
+              valueFrom:
+                fieldRef:
+                  apiVersion: v1
+                  fieldPath: status.podIP
+            - name: GOMEMLIMIT
+              value: "1024MiB"
+          # livenessProbe:
+          #   httpGet:
+          #     path: /
+          #     port: 13133
+          #   initialDelaySeconds: 120
+          # readinessProbe:
+          #   httpGet:
+          #     path: /
+          #     port: 13133
+          #   initialDelaySeconds: 120
+          resources:
+            limits:
+              memory: 2Gi
+            requests:
+              memory: 512Mi
+          volumeMounts:
+            - mountPath: /conf
+              name: opentelemetry-collector-configmap
+      volumes:
+        - name: opentelemetry-collector-configmap
+          configMap:
+            name: otelcol
+            items:
+              - key: relay
+                path: relay.yaml
+      hostNetwork: false
+---

@@ -1,0 +1,211 @@
+# Source: opentelemetry-demo/charts/opensearch/templates/poddisruptionbudget.yaml
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: "opensearch-pdb"
+  labels:
+    app.kubernetes.io/name: opensearch
+    app.kubernetes.io/instance: otel-demo
+    app.kubernetes.io/version: "2.15.0"
+    app.kubernetes.io/component: opensearch
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: opensearch
+      app.kubernetes.io/instance: otel-demo
+---
+# Source: opentelemetry-demo/charts/opensearch/templates/configmap.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: opensearch-config
+  labels:
+    app.kubernetes.io/name: opensearch
+    app.kubernetes.io/instance: otel-demo
+    app.kubernetes.io/version: "2.15.0"
+    app.kubernetes.io/component: opensearch
+data:
+  opensearch.yml: |
+    cluster.name: opensearch-cluster
+    
+    # Bind to all interfaces because we don't know what IP address Docker will assign to us.
+    network.host: 0.0.0.0
+    
+    # Setting network.host to a non-loopback address enables the annoying bootstrap checks. "Single-node" mode disables them again.
+    # Implicitly done if ".singleNode" is set to "true".
+    # discovery.type: single-node
+    
+    # Start OpenSearch Security Demo Configuration
+    # WARNING: revise all the lines below before you go into production
+    plugins:
+      security:
+        ssl:
+          transport:
+            pemcert_filepath: esnode.pem
+            pemkey_filepath: esnode-key.pem
+            pemtrustedcas_filepath: root-ca.pem
+            enforce_hostname_verification: false
+          http:
+            enabled: true
+            pemcert_filepath: esnode.pem
+            pemkey_filepath: esnode-key.pem
+            pemtrustedcas_filepath: root-ca.pem
+        allow_unsafe_democertificates: true
+        allow_default_init_securityindex: true
+        authcz:
+          admin_dn:
+            - CN=kirk,OU=client,O=client,L=test,C=de
+        audit.type: internal_opensearch
+        enable_snapshot_restore_privilege: true
+        check_snapshot_restore_write_privileges: true
+        restapi:
+          roles_enabled: ["all_access", "security_rest_api_access"]
+        system_indices:
+          enabled: true
+          indices:
+            [
+              ".opendistro-alerting-config",
+              ".opendistro-alerting-alert*",
+              ".opendistro-anomaly-results*",
+              ".opendistro-anomaly-detector*",
+              ".opendistro-anomaly-checkpoints",
+              ".opendistro-anomaly-detection-state",
+              ".opendistro-reports-*",
+              ".opendistro-notifications-*",
+              ".opendistro-notebooks",
+              ".opendistro-asynchronous-search-response*",
+            ]
+    ######## End OpenSearch Security Demo Configuration ########
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: opensearch
+  namespace: otel-demo  # Ensure this matches the namespace used in opentelemetry-demo.yaml
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: opensearch
+  template:
+    metadata:
+      labels:
+        app: opensearch
+    spec:
+      containers:
+      - name: opensearch
+        image: ${OPENSEARCH_IMAGE}
+        resources:
+          requests:
+            memory: "2Gi"
+            cpu: "500m"
+          limits:
+            memory: "4Gi"
+            cpu: "1"
+        env:
+          - name: discovery.type
+            value: "single-node"
+          - name: OPENSEARCH_INITIAL_ADMIN_PASSWORD
+            value: ${AWS_OPENSEARCH_PASSWORD}
+        volumeMounts:
+          - mountPath: /var/lib/opensearch/data
+            name: opensearch-data
+        ports:
+          - containerPort: ${OPENSEARCH_PORT}
+      volumes:
+        - name: opensearch-data
+          emptyDir: {}
+# ---
+# apiVersion: v1
+# kind: Service
+# metadata:
+#   name: opensearch-headless
+#   namespace: otel-demo  # Ensure this matches the namespace used in opentelemetry-demo.yaml
+# spec:
+#   clusterIP: None
+#   selector:
+#     app: opensearch
+#   ports:
+#     - protocol: TCP
+#       port: ${OPENSEARCH_PORT}
+#       targetPort: ${OPENSEARCH_PORT}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: opensearch
+  namespace: otel-demo  # Ensure this matches the namespace used in opentelemetry-demo.yaml
+spec:
+  selector:
+    app: opensearch
+  ports:
+    - protocol: TCP
+      port: ${OPENSEARCH_PORT}
+      targetPort: ${OPENSEARCH_PORT}
+---
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: openobserve
+  namespace: otel-demo
+  labels:
+    app.kubernetes.io/name: openobserve
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: openobserve
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: openobserve
+    spec:
+      containers:
+      - name: openobserve
+        image: public.ecr.aws/zinclabs/openobserve:latest
+        env:
+        - name: ZO_LOCAL_MODE
+          value: "true"
+        - name: ZO_LOCAL_MODE_STORAGE
+          value: "disk"
+        - name: ZO_AUTH_ENABLED
+          value: "true"
+        - name: ZO_ROOT_USER_EMAIL
+          value: "admin@opentelemetry-demo.com"
+        - name: ZO_AUTH_PROVIDER
+          value: "basic"
+        - name: ZO_ROOT_USER_PASSWORD
+          value: "${AWS_OPENSEARCH_PASSWORD}"
+        ports:
+        - name: ui
+          containerPort: 5080          
+        - name: api
+          containerPort: 5081
+        volumeMounts:
+        - name: openobserve-storage
+          mountPath: /var/lib/openobserve  # Path inside the container where data will be stored
+      volumes:
+      - name: openobserve-storage
+        emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: openobserve
+  namespace: otel-demo
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: openobserve
+  ports:
+    - protocol: TCP
+      port: 5080
+      targetPort: 5080
+      name: ui
+    - protocol: TCP
+      port: 5081
+      targetPort: 5081
+      name: api
