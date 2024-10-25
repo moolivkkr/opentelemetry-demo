@@ -72,7 +72,6 @@ metadata:
   name: prometheus-server
   namespace: otel-demo
   annotations:
-    {}
 ---
 # Source: opentelemetry-demo/templates/serviceaccount.yaml
 apiVersion: v1
@@ -86,6 +85,9 @@ metadata:
     app.kubernetes.io/name: otel-demo
     app.kubernetes.io/version: "1.11.3"
     app.kubernetes.io/part-of: otel-demo
+  name: opentelemetry-demo
+  namespace: otel-demo
+  annotations:
 ---
 # Source: opentelemetry-demo/charts/grafana/templates/secret.yaml
 apiVersion: v1
@@ -456,7 +458,7 @@ metadata:
     app.kubernetes.io/part-of: otel-demo
 data:
   
-  demo.flagd.json: |
+  demo-flagd.json: |
     {
       "$schema": "https://flagd.dev/schema/v0/flags.json",
       "flags": {
@@ -467,7 +469,7 @@ data:
             "on": true,
             "off": false
           },
-          "defaultVariant": "off"
+          "defaultVariant": "on"
         },
         "recommendationServiceCacheFailure": {
           "description": "Fail recommendation service cache",
@@ -476,7 +478,7 @@ data:
             "on": true,
             "off": false
           },
-          "defaultVariant": "off"
+          "defaultVariant": "on"
         },
         "adServiceManualGc": {
           "description": "Triggers full manual garbage collections in the ad service",
@@ -485,7 +487,7 @@ data:
             "on": true,
             "off": false
           },
-          "defaultVariant": "off"
+          "defaultVariant": "on"
         },
         "adServiceHighCpu": {
           "description": "Triggers high cpu load in the ad service",
@@ -494,7 +496,7 @@ data:
             "on": true,
             "off": false
           },
-          "defaultVariant": "off"
+          "defaultVariant": "on"
         },
         "adServiceFailure": {
           "description": "Fail ad service",
@@ -503,7 +505,7 @@ data:
             "on": true,
             "off": false
           },
-          "defaultVariant": "off"
+          "defaultVariant": "on"
         },
         "kafkaQueueProblems": {
           "description": "Overloads Kafka queue while simultaneously introducing a consumer side delay leading to a lag spike",
@@ -512,7 +514,7 @@ data:
             "on": 100,
             "off": 0
           },
-          "defaultVariant": "off"
+          "defaultVariant": "on"
         },
         "cartServiceFailure": {
           "description": "Fail cart service",
@@ -521,7 +523,7 @@ data:
             "on": true,
             "off": false
           },
-          "defaultVariant": "off"
+          "defaultVariant": "on"
         },
         "paymentServiceFailure": {
           "description": "Fail payment service charge requests",
@@ -530,7 +532,7 @@ data:
             "on": true,
             "off": false
           },
-          "defaultVariant": "off"
+          "defaultVariant": "on"
         },
         "paymentServiceUnreachable": {
           "description": "Payment service is unavailable",
@@ -8767,8 +8769,7 @@ spec:
     - port: 8013
       name: tcp-service
       targetPort: 8013
-  selector:
-    
+  selector:    
     opentelemetry.io/name: flagd
 ---
 # Source: opentelemetry-demo/templates/component.yaml
@@ -9929,17 +9930,19 @@ spec:
       serviceAccountName: opentelemetry-demo
       containers:
         - name: flagd
-          image: 'ghcr.io/open-feature/flagd:v0.11.1'
+          image: 'ghcr.io/open-feature/flagd:latest'
           imagePullPolicy: ${IMAGE_PULL_POLICY}
-          command:
-          - /flagd-build
+          command:          
+          - /flagd-build 
           - start
           - --uri
-          - file:./etc/flagd/demo.flagd.json
+          - file:./etc/flagd/demo-flagd.json   
+          - --port 
+          - "8013"
+          - --debug               
           ports:
-          
           - containerPort: 8013
-            name: service
+            name: tcp-service
           env:
           - name: OTEL_SERVICE_NAME
             valueFrom:
@@ -9960,12 +9963,16 @@ spec:
             limits:
               memory: 50Mi
           volumeMounts:
-            - name: config
-              mountPath: /etc/flagd
+          - name: config
+            mountPath: /etc/flagd            
       volumes:
         - name: config
           configMap:
             name: flagd-config
+            items:
+              - key: demo-flagd.json
+                path: demo-flagd.json
+
 ---
 # Source: opentelemetry-demo/templates/component.yaml
 apiVersion: apps/v1
@@ -10562,9 +10569,9 @@ spec:
           - name: FLAGD_PORT
             value: "8013"
           - name: OTEL_EXPORTER_OTLP_ENDPOINT
-            value: http://$(OTEL_COLLECTOR_NAME):4317
+            value: http://otelcol:4317
           - name: OTEL_RESOURCE_ATTRIBUTES
-            value: service.name=$(OTEL_SERVICE_NAME),service.namespace=opentelemetry-demo,service.version=1.11.3
+            value: service.name=productcatalogservice,service.namespace=opentelemetry-demo,service.version=1.11.3
           resources:
             limits:
               memory: 1024Mi
