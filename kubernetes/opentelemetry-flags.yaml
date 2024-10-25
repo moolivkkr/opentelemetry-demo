@@ -1,0 +1,218 @@
+# Source: opentelemetry-demo/templates/flagd-config.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: flagd-config
+  namespace: otel-demo
+  labels:
+    
+    opentelemetry.io/name: otel-demo
+    app.kubernetes.io/instance: otel-demo
+    app.kubernetes.io/name: otel-demo
+    app.kubernetes.io/version: "1.11.3"
+    app.kubernetes.io/part-of: otel-demo
+data:
+  
+  demo-flagd.json: |
+    {
+      "$schema": "https://flagd.dev/schema/v0/flags.json",
+      "flags": {
+        "productCatalogFailure": {
+          "description": "Fail product catalog service on a specific product",
+          "state": "ENABLED",
+          "variants": {
+            "on": true,
+            "off": false
+          },
+          "defaultVariant": "on"
+        },
+        "recommendationServiceCacheFailure": {
+          "description": "Fail recommendation service cache",
+          "state": "ENABLED",
+          "variants": {
+            "on": true,
+            "off": false
+          },
+          "defaultVariant": "on"
+        },
+        "adServiceManualGc": {
+          "description": "Triggers full manual garbage collections in the ad service",
+          "state": "ENABLED",
+          "variants": {
+            "on": true,
+            "off": false
+          },
+          "defaultVariant": "off"
+        },
+        "adServiceHighCpu": {
+          "description": "Triggers high cpu load in the ad service",
+          "state": "ENABLED",
+          "variants": {
+            "on": true,
+            "off": false
+          },
+          "defaultVariant": "off"
+        },
+        "adServiceFailure": {
+          "description": "Fail ad service",
+          "state": "ENABLED",
+          "variants": {
+            "on": true,
+            "off": false
+          },
+          "defaultVariant": "off"
+        },
+        "kafkaQueueProblems": {
+          "description": "Overloads Kafka queue while simultaneously introducing a consumer side delay leading to a lag spike",
+          "state": "ENABLED",
+          "variants": {
+            "on": 100,
+            "off": 0
+          },
+          "defaultVariant": "on"
+        },
+        "cartServiceFailure": {
+          "description": "Fail cart service",
+          "state": "ENABLED",
+          "variants": {
+            "on": true,
+            "off": false
+          },
+          "defaultVariant": "off"
+        },
+        "paymentServiceFailure": {
+          "description": "Fail payment service charge requests",
+          "state": "ENABLED",
+          "variants": {
+            "on": true,
+            "off": false
+          },
+          "defaultVariant": "on"
+        },
+        "paymentServiceUnreachable": {
+          "description": "Payment service is unavailable",
+          "state": "ENABLED",
+          "variants": {
+            "on": true,
+            "off": false
+          },
+          "defaultVariant": "off"
+        },
+        "loadgeneratorFloodHomepage": {
+          "description": "Flood the frontend with a large amount of requests.",
+          "state": "ENABLED",
+          "variants": {
+            "on": 100,
+            "off": 0
+          },
+          "defaultVariant": "off"
+        },
+        "imageSlowLoad": {
+          "description": "slow loading images in the frontend",
+          "state": "ENABLED",
+          "variants": {
+            "10sec": 10000,
+            "5sec": 5000,
+            "off": 0
+          },
+          "defaultVariant": "off"
+        }
+      }
+    }
+---
+# Source: opentelemetry-demo/templates/component.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: flagd
+  labels:
+    
+    opentelemetry.io/name: flagd
+    app.kubernetes.io/instance: otel-demo
+    app.kubernetes.io/component: flagd
+    app.kubernetes.io/name: flagd
+    app.kubernetes.io/version: "1.11.3"
+    app.kubernetes.io/part-of: otel-demo
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8013
+      name: tcp-service
+      targetPort: 8013
+  selector:    
+    opentelemetry.io/name: flagd
+---
+# Source: opentelemetry-demo/templates/component.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: flagd
+  labels:
+    
+    opentelemetry.io/name: flagd
+    app.kubernetes.io/instance: otel-demo
+    app.kubernetes.io/component: flagd
+    app.kubernetes.io/name: flagd
+    app.kubernetes.io/version: "1.11.3"
+    app.kubernetes.io/part-of: otel-demo
+spec:
+  replicas: 1
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      
+      opentelemetry.io/name: flagd
+  template:
+    metadata:
+      labels:
+        
+        opentelemetry.io/name: flagd
+        app.kubernetes.io/instance: otel-demo
+        app.kubernetes.io/component: flagd
+        app.kubernetes.io/name: flagd
+    spec:
+      serviceAccountName: opentelemetry-demo
+      containers:
+        - name: flagd
+          image: 'ghcr.io/open-feature/flagd:latest'
+          imagePullPolicy: ${IMAGE_PULL_POLICY}
+          command:          
+          - /flagd-build 
+          - start
+          - --uri
+          - file:./etc/flagd/demo-flagd.json   
+          - --port 
+          - "8013"
+          - --debug               
+          ports:
+          - containerPort: 8013
+            name: tcp-service
+          env:
+          - name: OTEL_SERVICE_NAME
+            valueFrom:
+              fieldRef:
+                apiVersion: v1
+                fieldPath: metadata.labels['app.kubernetes.io/component']
+          - name: OTEL_COLLECTOR_NAME
+            value: 'otelcol'
+          - name: OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE
+            value: cumulative
+          - name: FLAGD_METRICS_EXPORTER
+            value: otel
+          - name: FLAGD_OTEL_COLLECTOR_URI
+            value: $(OTEL_COLLECTOR_NAME):4317
+          - name: OTEL_RESOURCE_ATTRIBUTES
+            value: service.name=$(OTEL_SERVICE_NAME),service.namespace=opentelemetry-demo,service.version=1.11.3
+          resources:
+            limits:
+              memory: 50Mi
+          volumeMounts:
+          - name: config
+            mountPath: /etc/flagd            
+      volumes:
+        - name: config
+          configMap:
+            name: flagd-config
+            items:
+              - key: demo-flagd.json
+                path: demo-flagd.json

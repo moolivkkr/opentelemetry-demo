@@ -5,6 +5,9 @@ kubectl apply -f data-prepper-deployment.yaml
 export KUBECONFIG=/Users/kishoremooli/development/opentelemetry-demo/workload-cluster/workload-cluster-eks-a-cluster.kubeconfig
 export CLUSTER_NAME=workload-cluster
 export AWS_DEFAULT_REGION=us-east-1
+
+
+
 alias k="kubectl --namespace otel-demo"
 alias kgp="kubectl --namespace otel-demo get pods"
 alias kgd="kubectl --namespace otel-demo get deployments"
@@ -14,7 +17,11 @@ alias kdd="kubectl --namespace otel-demo delete deployments --all"
 alias kds="kubectl --namespace otel-demo delete services --all"
 alias kl="kubectl --namespace otel-demo logs"
 alias podnames="kubectl --namespace otel-demo get pods -o custom-columns=:metadata.name"
+alias podname="kubectl --namespace otel-demo get pods -o custom-columns=:metadata.name | grep `$1`"
 alias kdps="kubectl --namespace otel-demo delete pod %1"
+alias podname="kubectl --namespace otel-demo get pods -o custom-columns=:metadata.name | grep `$1`"
+
+
 export $(grep -v '^#' .env | xargs)
 
 envsubst < opentelemetry-opensearch.yaml | kubectl apply -f -

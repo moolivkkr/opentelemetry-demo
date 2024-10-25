@@ -1,0 +1,23 @@
+{
+    "$schema": "https://flagd.dev/schema/v0/flags.json",
+    "flags": {
+      "show-welcome-banner": {
+        "state": "ENABLED",
+        "variants": {
+          "on": true,
+          "off": false
+        },
+        "defaultVariant": "on"
+      },
+      "background-color": {
+        "state": "ENABLED",
+        "variants": {
+          "red": "#FF0000",
+          "blue": "#0000FF",
+          "green": "#00FF00",
+          "yellow": "#FFFF00"
+        },
+        "defaultVariant": "red"
+      }
+    }
+}

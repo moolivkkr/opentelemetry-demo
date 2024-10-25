@@ -78,7 +78,35 @@ func (h *contextHook) Fire(entry *logrus.Entry) error {
 			entry.Data["trace_id"] = span.SpanContext().TraceID().String()
             entry.Data["span_id"] = span.SpanContext().SpanID().String()
         }
-        // delete(entry.Data, "context") // Remove context from entry data to avoid logging it directly
+        // Map logrus log levels to OpenTelemetry severity levels and numbers
+        var severityText string
+        var severityNumber int
+        switch entry.Level {
+        case logrus.PanicLevel, logrus.FatalLevel:
+            severityText = "FATAL"
+            severityNumber = 21 // FATAL range: 21-24
+        case logrus.ErrorLevel:
+            severityText = "ERROR"
+            severityNumber = 17 // ERROR range: 17-20
+        case logrus.WarnLevel:
+            severityText = "WARN"
+            severityNumber = 13 // WARN range: 13-16
+        case logrus.InfoLevel:
+            severityText = "INFO"
+            severityNumber = 9 // INFO range: 9-12
+        case logrus.DebugLevel:
+            severityText = "DEBUG"
+            severityNumber = 5 // DEBUG range: 5-8
+        case logrus.TraceLevel:
+            severityText = "TRACE"
+            severityNumber = 1 // TRACE range: 1-4
+        default:
+            severityText = "UNSPECIFIED"
+            severityNumber = 0 // UNSPECIFIED
+        }
+
+        entry.Data["SeverityText"] = severityText
+        entry.Data["SeverityNumber"] = severityNumber
     }
     return nil
 }
@@ -154,7 +182,7 @@ func newLoggerProvider(ctx context.Context, res *sdkresource.Resource) (*sdklog.
 		otlploggrpc.WithDialOption(grpc.WithTransportCredentials(insecure.NewCredentials())),
 	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create OTLP gRPC log exporter: %v", err)
+		return nil, fmt.Errorf("[Error]: failed to create OTLP gRPC log exporter: %v", err)
 	}
 
 	batcher := sdklog.NewBatchProcessor(exporter) //sdklog.WithExportTimeout(5*time.Second),
@@ -235,14 +263,14 @@ func main() {
 	tp := initTracerProvider()
 	defer func() {
 		if err := tp.Shutdown(context.Background()); err != nil {
-			log.Printf("Error shutting down tracer provider: %v", err)
+			log.Printf("[Error]: Error shutting down tracer provider: %v", err)
 		}
 	}()
 
 	mp := initMeterProvider()
 	defer func() {
 		if err := mp.Shutdown(context.Background()); err != nil {
-			log.Printf("Error shutting down meter provider: %v", err)
+			log.Printf("[Error]:  shutting down meter provider: %v", err)
 		}
 	}()
 
@@ -444,19 +472,19 @@ func (cs *checkoutService) prepareOrderItemsAndShippingQuoteFromCart(ctx context
 	var out orderPrep
 	cartItems, err := cs.getUserCart(ctx, userID)
 	if err != nil {
-		return out, fmt.Errorf("cart failure: %+v", err)
+		return out, fmt.Errorf("[Error]: cart failure: %+v", err)
 	}
 	orderItems, err := cs.prepOrderItems(ctx, cartItems, userCurrency)
 	if err != nil {
-		return out, fmt.Errorf("failed to prepare order: %+v", err)
+		return out, fmt.Errorf("[Error]: failed to prepare order: %+v", err)
 	}
 	shippingUSD, err := cs.quoteShipping(ctx, address, cartItems)
 	if err != nil {
-		return out, fmt.Errorf("shipping quote failure: %+v", err)
+		return out, fmt.Errorf("[Error]: shipping quote failure: %+v", err)
 	}
 	shippingPrice, err := cs.convertCurrency(ctx, shippingUSD, userCurrency)
 	if err != nil {
-		return out, fmt.Errorf("failed to convert shipping cost to currency: %+v", err)
+		return out, fmt.Errorf("[Error]: failed to convert shipping cost to currency: %+v", err)
 	}
 
 	out.shippingCostLocalized = shippingPrice
@@ -495,7 +523,7 @@ func (cs *checkoutService) quoteShipping(ctx context.Context, address *pb.Addres
 			Address: address,
 			Items:   items})
 	if err != nil {
-		return nil, fmt.Errorf("failed to get shipping quote: %+v", err)
+		return nil, fmt.Errorf("[Error]: failed to get shipping quote: %+v", err)
 	}
 	return shippingQuote.GetCostUsd(), nil
 }
@@ -526,12 +554,12 @@ func (cs *checkoutService) prepOrderItems(ctx context.Context, items []*pb.CartI
 	for i, item := range items {
 		product, err := cs.productCatalogSvcClient.GetProduct(ctx, &pb.GetProductRequest{Id: item.GetProductId()})
 		if err != nil {
-			log.WithContext(ctx).Errorf("failed to get product #%q", item.GetProductId())
+			log.WithContext(ctx).Errorf("[Error]: failed to get product #%q", item.GetProductId())
 			return nil, fmt.Errorf("failed to get product #%q", item.GetProductId())
 		}
 		price, err := cs.convertCurrency(ctx, product.GetPriceUsd(), userCurrency)
 		if err != nil {
-			log.WithContext(ctx).Errorf("failed to convert price of %q to %s", item.GetProductId(), userCurrency)
+			log.WithContext(ctx).Errorf("[Error]: failed to convert price of %q to %s", item.GetProductId(), userCurrency)
 			return nil, fmt.Errorf("failed to convert price of %q to %s", item.GetProductId(), userCurrency)
 		}
 		out[i] = &pb.OrderItem{
@@ -565,7 +593,7 @@ func (cs *checkoutService) chargeCard(ctx context.Context, amount *pb.Money, pay
 		Amount:     amount,
 		CreditCard: paymentInfo})
 	if err != nil {
-		log.WithContext(ctx).Errorf("could not charge the card: %+v", err)
+		log.WithContext(ctx).Errorf("[Error]: could not charge the card: %+v", err)
 		return "", fmt.Errorf("could not charge the card: %+v", err)
 	}
 	return paymentResp.GetTransactionId(), nil
@@ -577,17 +605,17 @@ func (cs *checkoutService) sendOrderConfirmation(ctx context.Context, email stri
 		"order": order,
 	})
 	if err != nil {
-		return fmt.Errorf("failed to marshal order to JSON: %+v", err)
+		return fmt.Errorf("[Error]: failed to marshal order to JSON: %+v", err)
 	}
 
 	resp, err := otelhttp.Post(ctx, cs.emailSvcAddr+"/send_order_confirmation", "application/json", bytes.NewBuffer(emailServicePayload))
 	if err != nil {
-		return fmt.Errorf("failed POST to email service: %+v", err)
+		return fmt.Errorf("[Error]: failed POST to email service: %+v", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("failed POST to email service: expected 200, got %d", resp.StatusCode)
+		return fmt.Errorf("[Error]: failed POST to email service: expected 200, got %d", resp.StatusCode)
 	}
 
 	return err
@@ -600,7 +628,7 @@ func (cs *checkoutService) shipOrder(ctx context.Context, address *pb.Address, i
 		Address: address,
 		Items:   items})
 	if err != nil {
-		log.WithContext(ctx).Errorf("failed to ship order: %+v", err)
+		log.WithContext(ctx).Errorf("[Error]: failed to ship order: %+v", err)
 		return "", fmt.Errorf("shipment failed: %+v", err)
 	}
 	return resp.GetTrackingId(), nil
@@ -641,7 +669,7 @@ func (cs *checkoutService) sendToPostProcessor(ctx context.Context, result *pb.O
 				attribute.Int("messaging.kafka.producer.duration_ms", int(time.Since(startTime).Milliseconds())),
 			)
 			span.SetStatus(otelcodes.Error, errMsg.Err.Error())
-			log.Errorf("Failed to write message: %v", errMsg.Err)
+			log.Errorf("[Error]: Failed to write message: %v", errMsg.Err)
 		case <-ctx.Done():
 			span.SetAttributes(
 				attribute.Bool("messaging.kafka.producer.success", false),

@@ -514,7 +514,7 @@ data:
             "on": 100,
             "off": 0
           },
-          "defaultVariant": "off"
+          "defaultVariant": "on"
         },
         "cartServiceFailure": {
           "description": "Fail cart service",
@@ -532,7 +532,7 @@ data:
             "on": true,
             "off": false
           },
-          "defaultVariant": "off"
+          "defaultVariant": "on"
         },
         "paymentServiceUnreachable": {
           "description": "Payment service is unavailable",
