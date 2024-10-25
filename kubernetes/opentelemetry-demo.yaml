@@ -478,7 +478,7 @@ data:
             "on": true,
             "off": false
           },
-          "defaultVariant": "on"
+          "defaultVariant": "off"
         },
         "adServiceManualGc": {
           "description": "Triggers full manual garbage collections in the ad service",
@@ -487,7 +487,7 @@ data:
             "on": true,
             "off": false
           },
-          "defaultVariant": "on"
+          "defaultVariant": "off"
         },
         "adServiceHighCpu": {
           "description": "Triggers high cpu load in the ad service",
@@ -496,7 +496,7 @@ data:
             "on": true,
             "off": false
           },
-          "defaultVariant": "on"
+          "defaultVariant": "off"
         },
         "adServiceFailure": {
           "description": "Fail ad service",
@@ -505,7 +505,7 @@ data:
             "on": true,
             "off": false
           },
-          "defaultVariant": "on"
+          "defaultVariant": "off"
         },
         "kafkaQueueProblems": {
           "description": "Overloads Kafka queue while simultaneously introducing a consumer side delay leading to a lag spike",
@@ -514,7 +514,7 @@ data:
             "on": 100,
             "off": 0
           },
-          "defaultVariant": "on"
+          "defaultVariant": "off"
         },
         "cartServiceFailure": {
           "description": "Fail cart service",
@@ -523,7 +523,7 @@ data:
             "on": true,
             "off": false
           },
-          "defaultVariant": "on"
+          "defaultVariant": "off"
         },
         "paymentServiceFailure": {
           "description": "Fail payment service charge requests",
@@ -532,7 +532,7 @@ data:
             "on": true,
             "off": false
           },
-          "defaultVariant": "on"
+          "defaultVariant": "off"
         },
         "paymentServiceUnreachable": {
           "description": "Payment service is unavailable",
