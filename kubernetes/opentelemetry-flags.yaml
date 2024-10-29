@@ -24,7 +24,7 @@ data:
             "on": true,
             "off": false
           },
-          "defaultVariant": "on"
+          "defaultVariant": "off"
         },
         "recommendationServiceCacheFailure": {
           "description": "Fail recommendation service cache",
@@ -33,7 +33,7 @@ data:
             "on": true,
             "off": false
           },
-          "defaultVariant": "on"
+          "defaultVariant": "off"
         },
         "adServiceManualGc": {
           "description": "Triggers full manual garbage collections in the ad service",
@@ -69,7 +69,7 @@ data:
             "on": 100,
             "off": 0
           },
-          "defaultVariant": "on"
+          "defaultVariant": "off"
         },
         "cartServiceFailure": {
           "description": "Fail cart service",
@@ -87,7 +87,7 @@ data:
             "on": true,
             "off": false
           },
-          "defaultVariant": "on"
+          "defaultVariant": "off"
         },
         "paymentServiceUnreachable": {
           "description": "Payment service is unavailable",

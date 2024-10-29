@@ -1,0 +1,4 @@
+syncs:
+  - type: s3
+    bucket: "oteldemo-configurations"
+    prefix: "/flags_config/demo.flagd.json"

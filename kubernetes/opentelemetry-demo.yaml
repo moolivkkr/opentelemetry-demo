@@ -469,7 +469,7 @@ data:
             "on": true,
             "off": false
           },
-          "defaultVariant": "on"
+          "defaultVariant": "off"
         },
         "recommendationServiceCacheFailure": {
           "description": "Fail recommendation service cache",
@@ -514,7 +514,7 @@ data:
             "on": 100,
             "off": 0
           },
-          "defaultVariant": "on"
+          "defaultVariant": "off"
         },
         "cartServiceFailure": {
           "description": "Fail cart service",
